@@ -1,0 +1,183 @@
+/* ===========================================================================
+   TV models. The base stylesheet is the `console`. Each model restyles the same DOM via
+   :host([data-model=…]); parts a model doesn't have stay display:none. Colours come from
+   --cabinet-* / --trim / --knob-* so the palette of the active theme applies to every model.
+   =========================================================================== */
+.antenna,
+.handle,
+.crest,
+.door,
+.side-speaker {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   portable — village set: compact cream plastic, carry handle, one chrome
+   telescopic antenna, two small knobs.
+   --------------------------------------------------------------------------- */
+:host([data-model='portable']) {
+  width: min(100%, 540px, calc((100dvh - 300px) * 1.3));
+
+  .tv { padding-top: 13%; }
+  .handle {
+    display: block;
+    position: absolute;
+    top: 5%;
+    left: 31%;
+    width: 38%;
+    height: 10%;
+    border: 5px solid color-mix(in srgb, var(--cabinet-3) 70%, #000);
+    border-bottom: 0;
+    border-radius: 28px 28px 0 0;
+  }
+  .antenna {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 78%;
+    width: 12%;
+    height: 14%;
+
+    .rod {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      width: 2px;
+      height: 170%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #8d8d8d, #f2f2f2, #8d8d8d);
+      transform-origin: bottom;
+      transform: rotate(24deg);
+    }
+    .base {
+      position: absolute;
+      bottom: 0;
+      left: 30%;
+      width: 40%;
+      height: 22%;
+      border-radius: 3px 3px 0 0;
+      background: linear-gradient(#5a5a5a, #2a2a2a);
+    }
+  }
+  .cabinet { border-radius: 14px; grid-template-columns: 1fr 15%; }
+  .panel { background: linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.16)); }
+  .brand { color: rgba(60, 50, 35, 0.55); }
+  .feet span { width: 5%; height: 6px; }
+}
+
+/* ---------------------------------------------------------------------------
+   sleek — city stereo TV: brushed silver, a speaker either side, a slim control
+   strip underneath, no antenna.
+   --------------------------------------------------------------------------- */
+:host([data-model='sleek']) {
+  width: min(100%, 740px, calc((100dvh - 300px) * 1.6));
+
+  .cabinet {
+    grid-template-columns: 10% 1fr 10%;
+    grid-template-areas: 'spkl screen spkr' 'strip strip strip';
+    row-gap: 10px;
+    border-radius: 10px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.25), transparent 30%),
+      linear-gradient(180deg, var(--cabinet-1), var(--cabinet-2) 60%, var(--cabinet-3));
+  }
+  .bezel { grid-area: screen; border-radius: 8px; }
+  .tube { border-radius: 8% / 7%; }
+  .side-speaker {
+    display: block;
+    border-radius: 6px;
+    background: radial-gradient(circle, rgba(0, 0, 0, 0.75) 34%, transparent 40%) 0 0 / 5px 5px,
+      linear-gradient(#3a3d45, #24262c);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+
+    &.left { grid-area: spkl; }
+    &.right { grid-area: spkr; }
+  }
+  .panel {
+    grid-area: strip;
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 6px 14px;
+    border-radius: 6px;
+  }
+  .brand { margin-right: auto; color: rgba(255, 255, 255, 0.7); }
+  .knob {
+    width: 22px;
+    border-radius: 4px;
+    transform: none;
+    background: linear-gradient(#f3f4f7, #a5a9b4);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+
+    &::after { display: none; }
+  }
+  .volume-knob.muted { background: linear-gradient(#ffb3a6, #d4664f); }
+  .grille { display: none; }
+  .feet { padding: 0 8%; }
+  .feet span { width: 22%; height: 7px; background: #15161a; }
+}
+
+/* ---------------------------------------------------------------------------
+   cabinet — villa console: walnut furniture with an inlaid brass line, a soft top
+   rail, louvered doors folded open, tall tapered legs.
+   --------------------------------------------------------------------------- */
+:host([data-model='cabinet']) {
+  width: min(100%, 640px, calc((100dvh - 330px) * 1.3));
+
+  .tv { padding: 3% 12% 0; }
+  .crest {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 4%;
+    border-radius: 8px 8px 0 0;
+    background: linear-gradient(var(--cabinet-1), var(--cabinet-3));
+    box-shadow: inset 0 1px 0 var(--trim);
+  }
+  .cabinet {
+    border-radius: 6px;
+    box-shadow:
+      inset 0 0 0 5px var(--cabinet-2),
+      inset 0 0 0 6px var(--trim),
+      0 30px 60px -18px rgba(0, 0, 0, 0.6);
+  }
+  .door {
+    display: block;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 24%;
+    background:
+      repeating-linear-gradient(180deg, transparent 0 8px, rgba(0, 0, 0, 0.28) 8px 10px) 14% 8% / 72% 84% no-repeat,
+      linear-gradient(90deg, var(--cabinet-1), var(--cabinet-3));
+    box-shadow: inset 0 0 0 1px var(--trim);
+
+    &.left { right: 100%; transform-origin: right; transform: perspective(700px) rotateY(-42deg); border-radius: 6px 0 0 6px; }
+    &.right { left: 100%; transform-origin: left; transform: perspective(700px) rotateY(42deg); border-radius: 0 6px 6px 0; }
+  }
+  .feet { padding: 0 3%; }
+  .feet span {
+    width: 4%;
+    height: 34px;
+    border-radius: 0 0 40% 40%;
+    background: linear-gradient(90deg, var(--cabinet-3), var(--cabinet-1), var(--cabinet-3));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   gloss — black lacquer: deep specular highlight, a thin bright rim.
+   --------------------------------------------------------------------------- */
+:host([data-model='gloss']) {
+  .cabinet {
+    background:
+      linear-gradient(155deg, rgba(255, 255, 255, 0.16), transparent 28%),
+      linear-gradient(180deg, var(--cabinet-1), var(--cabinet-3));
+    box-shadow:
+      inset 0 0 0 1px var(--trim),
+      0 30px 60px -18px rgba(0, 0, 0, 0.75),
+      0 0 60px -20px var(--accent);
+  }
+}

@@ -1,0 +1,6 @@
+# Keep LF in the repository so mvnw, Dockerfiles and shell scripts work on Linux CI/containers.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ico binary
+*.png binary

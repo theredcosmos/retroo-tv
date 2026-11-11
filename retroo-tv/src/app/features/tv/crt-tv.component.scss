@@ -1,0 +1,424 @@
+/* ===========================================================================
+   The TV — base model "console": a boxy teak set with a curved tube, a side panel with
+   two bakelite knobs and a grille. Materials are built from layered gradients plus an
+   SVG fractal-noise wood grain; light comes from above-left everywhere (consistent
+   highlights are what make CSS objects read as real).
+   Models (portable / sleek / cabinet / gloss) restyle this DOM in crt-tv.models.scss.
+   =========================================================================== */
+:host {
+  position: relative;
+  display: block;
+  width: min(100%, 700px, calc((100dvh - 300px) * 1.42));
+  min-width: 280px;
+}
+
+.tv {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- cabinet ---- */
+.cabinet {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 17%;
+  gap: 3.2%;
+  padding: 4.2% 3.8%;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), transparent 18%, transparent 82%, rgba(0, 0, 0, 0.25)),
+    linear-gradient(100deg, var(--cabinet-1) 0%, var(--cabinet-2) 55%, var(--cabinet-3) 100%);
+  box-shadow:
+    inset 0 1px 0 var(--trim),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.35),
+    inset 1px 0 0 rgba(255, 255, 255, 0.06),
+    0 30px 60px -18px rgba(0, 0, 0, 0.7),
+    0 8px 18px -8px rgba(0, 0, 0, 0.5);
+  transition: background var(--slow) var(--ease);
+
+  /* wood grain: stretched fractal noise, multiplied onto the veneer */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: var(--grain-a);
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='200'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.004 0.09' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.25 0 0 0 0 0.13 0 0 0 0 0.05 0 0 0 1.2 -0.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23w)'/%3E%3C/svg%3E");
+    background-size: 100% 100%;
+  }
+}
+
+.bezel {
+  position: relative;
+  padding: 4.5%;
+  border-radius: 12px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--bezel) 80%, #fff 6%), var(--bezel));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ---- picture tube ---- */
+.tube {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 13% / 11%;
+  background: #030303;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.95), inset 0 0 2px rgba(0, 0, 0, 1);
+}
+
+/* 16:9 iframe centre-cropped to fill the 4:3 tube. */
+.yt-crop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.yt-host,
+.yt-crop ::ng-deep iframe {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+  width: auto;
+  aspect-ratio: 16 / 9;
+  transform: translateX(-50%) scale(1.04);
+  border: 0;
+  pointer-events: none;
+  filter: var(--video-filter, none);
+}
+
+.noise {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  filter: contrast(0.92) brightness(0.95);
+  transition: opacity 0.35s var(--ease);
+
+  &.visible { opacity: 0.92; }
+}
+
+.scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.16) 50%);
+  background-size: 100% 3px;
+  mix-blend-mode: multiply;
+  opacity: 0.8;
+}
+
+/* Curved glass: a soft top-left highlight, a faint diagonal reflection, darker edges. */
+.glare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(70% 45% at 28% 12%, rgba(255, 255, 255, 0.12), transparent 70%),
+    linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.05) 46%, transparent 54%),
+    radial-gradient(ellipse at center, transparent 62%, rgba(0, 0, 0, 0.5) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* ---- on-screen display ---- */
+.osd {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: rgba(235, 255, 240, 0.92);
+  font-family: var(--font-mono);
+}
+
+.channel {
+  position: absolute;
+  top: 9%;
+  right: 10%;
+  font-size: clamp(12px, 1.6vw, 17px);
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 8px rgba(160, 255, 190, 0.55);
+  animation: osd-in 0.3s var(--ease);
+}
+
+.tune-in {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(56px, 8vw, 76px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: transform var(--fast) var(--ease), background var(--fast) var(--ease);
+
+  svg { width: 38%; fill: #fff; margin-left: 6%; }
+  &:hover { transform: scale(1.05); background: rgba(255, 255, 255, 0.18); }
+
+  .ring {
+    position: absolute;
+    inset: -1px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    animation: breathe 2.8s var(--ease) infinite;
+  }
+}
+
+.tune-label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.no-signal {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  max-width: 70%;
+  text-align: center;
+
+  .title { font-size: clamp(14px, 2vw, 20px); letter-spacing: 0.3em; text-transform: uppercase; }
+  small { font-family: var(--font-ui); font-size: 11px; color: rgba(255, 255, 255, 0.7); }
+}
+
+.retry {
+  margin-top: 6px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* ---- side panel ---- */
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9%;
+  padding: 12% 0 10%;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.42));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.brand {
+  font-size: clamp(6px, 0.75vw, 9px);
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  color: var(--trim);
+  margin-right: -0.4em;
+}
+
+/* Bakelite knob: fine knurling, a specular highlight, a pointer line. */
+.knob {
+  --angle: 0deg;
+  position: relative;
+  width: 58%;
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.28), transparent 38%),
+    repeating-conic-gradient(var(--knob-1) 0 4deg, var(--knob-2) 4deg 8deg);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.25);
+  transform: rotate(var(--angle));
+  transition: transform 0.6s cubic-bezier(0.25, 1.3, 0.4, 1);
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 9%;
+    left: 50%;
+    width: 6%;
+    height: 30%;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.75);
+    transform: translateX(-50%);
+  }
+
+  &:disabled { cursor: default; }
+}
+
+.volume-knob {
+  width: 42%;
+  --angle: 50deg;
+
+  &.muted { --angle: -130deg; }
+}
+
+.grille {
+  flex: 1;
+  width: 64%;
+  min-height: 16px;
+  border-radius: 4px;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.75) 32%, transparent 38%) 0 0 / 6px 6px;
+  opacity: 0.8;
+}
+
+.led {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #3b1512;
+  transition: background var(--slow) var(--ease), box-shadow var(--slow) var(--ease);
+
+  &.on { background: #ff6a4d; box-shadow: 0 0 6px #ff6a4d; }
+}
+
+/* ---- feet, contact shadow, stand ---- */
+.feet {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 14%;
+
+  span {
+    width: 7%;
+    height: 9px;
+    border-radius: 0 0 4px 4px;
+    background: linear-gradient(var(--cabinet-3), #000);
+  }
+}
+
+.contact-shadow {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: -6px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  filter: blur(10px);
+  z-index: -1;
+}
+
+.stand {
+  position: absolute;
+  left: -40%;
+  right: -40%;
+  top: calc(100% - 2px);
+  height: 70px;
+  z-index: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0, rgba(255, 255, 255, 0.10) 1px, transparent 1px),
+    linear-gradient(180deg, var(--surface-1) 0, var(--surface-1) 16px, var(--surface-2) 17px, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+  transition: background var(--slow) var(--ease);
+}
+
+/* ===========================================================================
+   Signal effects — refined, not gimmicky.
+   .t-channel      user changed channel: snow, a soft rolling band, gentle brightness flicker
+   .t-signal-loss  song ended: picture dims and drifts upward, then snow (≈3 s)
+   .arriving       new picture: settles from over-bright, slightly soft
+   .power-on       first tune-in: a thin bright line opens into the picture
+   .live           normal viewing: barely-there mains hum
+   =========================================================================== */
+.roll,
+.flicker {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.roll {
+  background: linear-gradient(180deg, transparent 35%, rgba(255, 255, 255, 0.10) 47%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.10) 53%, transparent 65%);
+  background-size: 100% 240%;
+  mix-blend-mode: screen;
+}
+
+.flicker {
+  background: #fff;
+  mix-blend-mode: overlay;
+}
+
+.t-channel,
+.t-signal-loss {
+  .roll { opacity: 1; animation: roll 1.6s linear infinite; }
+  .flicker { animation: flicker 1.2s steps(1, end) infinite; }
+}
+
+.t-signal-loss {
+  .yt-crop { animation: lose-signal 1.1s var(--ease) forwards; }
+  .noise.visible { animation: snow-in 3.2s linear forwards; }
+}
+
+.arriving .yt-crop { animation: settle 0.8s var(--ease); }
+
+.power-on .yt-crop,
+.power-on .noise { animation: power-on 0.75s cubic-bezier(0.2, 0.9, 0.1, 1) both; }
+
+.live .scanlines { animation: hum 0.16s steps(2, end) infinite; }
+
+@keyframes roll {
+  from { background-position: 0 100%; }
+  to { background-position: 0 -140%; }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 0; }
+  14% { opacity: 0.07; }
+  22% { opacity: 0.01; }
+  48% { opacity: 0.09; }
+  55% { opacity: 0; }
+  76% { opacity: 0.05; }
+}
+
+@keyframes lose-signal {
+  0% { transform: none; filter: none; }
+  30% { filter: brightness(1.25) saturate(0.8); }
+  100% { transform: translateY(-8%); filter: brightness(0.35) grayscale(1) blur(1px); }
+}
+
+@keyframes snow-in {
+  0% { opacity: 0; }
+  12% { opacity: 0.35; }
+  18% { opacity: 0.15; }
+  30%, 100% { opacity: 0.92; }
+}
+
+@keyframes settle {
+  from { filter: brightness(1.7) contrast(0.85) blur(1.5px); }
+  to { filter: none; }
+}
+
+@keyframes power-on {
+  0% { transform: scale(1, 0.004); filter: brightness(6); }
+  45% { transform: scale(1, 0.004); filter: brightness(6); }
+  70% { transform: scale(1, 1.02); filter: brightness(1.6); }
+  100% { transform: none; filter: none; }
+}
+
+@keyframes hum {
+  50% { opacity: 0.72; }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.18); opacity: 0; }
+}
+
+@keyframes osd-in {
+  from { opacity: 0; transform: translateY(-3px); }
+}

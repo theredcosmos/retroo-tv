@@ -1,0 +1,67 @@
+/* Page layout. The room, ambient glow and film grain are fixed layers (see their components);
+   the stage is a symmetric grid so the TV sits dead centre, like the subject of a photograph. */
+:host {
+  display: block;
+  position: relative;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+.stage {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(200px, 280px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'header header   header'
+    'feed   tv       .'
+    'feed   controls .';
+  column-gap: var(--gutter);
+  padding: var(--gutter);
+  padding-bottom: calc(var(--gutter) * 0.8);
+}
+
+.stage-header { grid-area: header; }
+
+.stage-feed {
+  grid-area: feed;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  min-height: 0;
+}
+
+.stage-tv {
+  grid-area: tv;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 2vh 0 7vh;
+}
+
+.stage-controls {
+  grid-area: controls;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: -3vh;
+  position: relative;
+  z-index: 2;
+}
+
+@media (max-width: 1000px) {
+  .stage {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas: 'header' 'tv' 'controls' 'feed';
+    row-gap: 16px;
+  }
+
+  .stage-tv { padding: 4vh 0 6vh; }
+  .stage-controls { margin-top: 0; }
+  .stage-feed { max-height: 380px; }
+}

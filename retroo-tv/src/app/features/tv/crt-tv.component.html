@@ -1,0 +1,93 @@
+<div class="tv">
+  <!-- model-specific parts; crt-tv.models.scss shows only the ones the current model has -->
+  <div class="antenna" aria-hidden="true"><span class="rod"></span><span class="base"></span></div>
+  <div class="handle" aria-hidden="true"></div>
+  <div class="crest" aria-hidden="true"></div>
+
+  <div class="cabinet">
+    <div class="door left" aria-hidden="true"></div>
+    <div class="side-speaker left" aria-hidden="true"></div>
+
+    <div class="bezel">
+      <div
+        class="tube"
+        [class.t-channel]="player.transition() === 'channel'"
+        [class.t-signal-loss]="player.transition() === 'signal-loss'"
+        [class.arriving]="player.arriving()"
+        [class.power-on]="poweringOn()"
+        [class.live]="player.status() === 'on' && !player.showStatic()"
+      >
+        <div class="yt-crop">
+          <div #ytHost class="yt-host"></div>
+        </div>
+
+        <canvas
+          appStaticNoise
+          class="noise"
+          [appNoiseActive]="player.showStatic()"
+          [class.visible]="player.showStatic()"
+          aria-hidden="true"
+        ></canvas>
+
+        <div class="roll" aria-hidden="true"></div>
+        <div class="flicker" aria-hidden="true"></div>
+        <div class="scanlines" aria-hidden="true"></div>
+        <div class="glare" aria-hidden="true"></div>
+
+        <div class="osd">
+          @if (osdVisible() || player.status() === 'tuning') {
+            <span class="channel">{{ osdLabel() }}</span>
+          }
+
+          @if (player.awaitingGesture() && player.status() !== 'error') {
+            <button type="button" class="tune-in" (click)="tuneIn()" aria-label="Tune in">
+              <span class="ring" aria-hidden="true"></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" /></svg>
+            </button>
+            <span class="tune-label">Tune in</span>
+          }
+
+          @if (player.status() === 'error') {
+            <div class="no-signal" role="alert">
+              <span class="title">No signal</span>
+              <small>{{ player.errorMessage() }}</small>
+              @if (player.canControl()) {
+                <button type="button" class="retry" (click)="player.next()">Try again</button>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="side-speaker right" aria-hidden="true"></div>
+    <div class="door right" aria-hidden="true"></div>
+
+    <div class="panel">
+      <span class="brand">RETROO</span>
+      <button
+        type="button"
+        class="knob channel-knob"
+        [style.--angle.deg]="knobAngle()"
+        (click)="nextChannel()"
+        [disabled]="!player.canControl()"
+        [attr.aria-label]="'Change channel (now ' + channelLabel() + ')'"
+      ></button>
+      <button
+        type="button"
+        class="knob volume-knob"
+        [class.muted]="player.muted()"
+        (click)="player.toggleMute()"
+        [attr.aria-label]="player.muted() ? 'Unmute' : 'Mute'"
+        [attr.aria-pressed]="player.muted()"
+      ></button>
+      <span class="grille" aria-hidden="true"></span>
+      <span class="led" [class.on]="player.status() === 'on'" aria-hidden="true"></span>
+    </div>
+  </div>
+
+  <div class="feet" aria-hidden="true"><span></span><span></span></div>
+  <div class="contact-shadow" aria-hidden="true"></div>
+</div>
+<!-- The console/table the TV stands on: in focus like the TV, fading out to the sides. -->
+<div class="stand" aria-hidden="true"></div>

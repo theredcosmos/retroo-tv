@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:retroo-test;MODE=Oracle;DATABASE_TO_UPPER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+retroo:
+  admin:
+    api-key: test-key
+  presence:
+    heartbeat: 1h
+  jam:
+    # Integration tests create many jams from 127.0.0.1; the 3/hour limit is covered by unit tests.
+    create-rate-limit:
+      max-requests: 1000
+      window: 1h
+    sweep-interval: 1h

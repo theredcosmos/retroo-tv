@@ -1,0 +1,24 @@
+<app-room />
+<app-ambient />
+
+<div class="stage">
+  <app-header class="stage-header" />
+
+  <aside class="stage-feed" aria-label="Playlists shared by listeners">
+    <app-playlist-feed />
+    <app-share-playlist-dialog />
+  </aside>
+
+  <main class="stage-tv">
+    <app-crt-tv />
+  </main>
+
+  <section class="stage-controls" aria-label="Playback controls">
+    <app-decade-bar />
+    <app-now-playing-bar />
+  </section>
+</div>
+
+<app-jam-drawer />
+<app-toast-host />
+<app-film-grain />

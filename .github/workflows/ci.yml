@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: retroo-tv-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Test (unit + integration on H2)
+        run: sh ./mvnw -B verify   # `sh` because the wrapper was committed from Windows (no +x bit)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: surefire-reports
+          path: retroo-tv-api/target/surefire-reports
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: retroo-tv
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: retroo-tv/package-lock.json
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:ci
+      - name: Production build
+        run: npx ng build --configuration production
+
+  docker:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: |
+          docker build -t retroo-tv-api ./retroo-tv-api
+          docker build -t retroo-tv-web ./retroo-tv

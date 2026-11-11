@@ -1,0 +1,48 @@
+# Full production-like stack: Oracle Free + Spring Boot API + nginx/Angular.
+#   docker compose up --build        → http://localhost
+# Secrets come from a .env file next to this one (see .env.example); never commit real values.
+
+services:
+  database:
+    image: gvenzl/oracle-free:23-slim-faststart
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:?set ORACLE_PASSWORD in .env}
+      APP_USER: retroo
+      APP_USER_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    ports:
+      - "1521:1521"
+    volumes:
+      - oradata:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  backend:
+    build: ./retroo-tv-api
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:oracle:thin:@database:1521/FREEPDB1
+      SPRING_DATASOURCE_USERNAME: retroo
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      RETROO_ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      RETROO_CORS_ORIGINS: ""
+    depends_on:
+      database:
+        condition: service_healthy
+    # Not published: only nginx talks to it.
+    expose:
+      - "8080"
+
+  frontend:
+    build: ./retroo-tv
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  oradata:

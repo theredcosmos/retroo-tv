@@ -1,0 +1,129 @@
+<section class="panel" aria-label="Jam sessions">
+  @if (jam.inJam()) {
+    @let j = jam.jam()!;
+    <!-- ================= inside a jam ================= -->
+    <header class="session">
+      <div class="title-row">
+        <h2 [title]="j.name">{{ j.name }}</h2>
+        @if (jam.isHost()) { <span class="badge host">HOST</span> }
+      </div>
+      <div class="meta">
+        <button type="button" class="chip code" (click)="copyInvite()" title="Copy invite link">
+          {{ j.code }} <span aria-hidden="true">⧉</span>
+        </button>
+        <button type="button" class="chip" (click)="showMembers.set(!showMembers())" [attr.aria-expanded]="showMembers()">
+          👥 {{ jam.members().length }}
+        </button>
+        <span class="chip timer" [class.warn]="jam.endingSoon()" role="timer" [attr.aria-label]="timeLeft() + ' left'">
+          ⏱ {{ timeLeft() }}
+        </span>
+      </div>
+      @if (showMembers()) {
+        <ul class="members">
+          @for (m of jam.members(); track $index) {
+            <li>{{ m }} @if (m === j.hostName) { <small>(host)</small> }</li>
+          }
+        </ul>
+      }
+      <div class="actions">
+        @if (jam.isHost()) {
+          @if (jam.canExtend()) {
+            <button type="button" class="ghost" (click)="jam.extend()" [disabled]="jam.busy()">+1 hour</button>
+          }
+          <button type="button" class="ghost danger" (click)="jam.end()" [disabled]="jam.busy()">End jam</button>
+        } @else {
+          <span class="hint">🎛️ {{ j.hostName }} controls the TV</span>
+          <button type="button" class="ghost" (click)="jam.leave()">Leave</button>
+        }
+      </div>
+    </header>
+
+    <ol class="chat" #chatList aria-live="polite" aria-label="Jam chat">
+      @for (m of jam.chat(); track m.id) {
+        @switch (m.kind) {
+          @case ('SYSTEM') { <li class="system">{{ m.text }}</li> }
+          @case ('PLAYLIST') {
+            <li class="msg">
+              <span class="author">{{ m.author }}</span>
+              <span class="text">{{ m.text }}</span>
+              <div class="playlist-card">
+                <span class="yt" aria-hidden="true">▶</span>
+                <span class="pl-text">Shared playlist</span>
+                @if (jam.isHost()) {
+                  <button type="button" class="play-tv" (click)="playOnTv(m)">Play on TV</button>
+                }
+                <a [href]="m.playlistUrl" target="_blank" rel="noopener noreferrer nofollow" aria-label="Open on YouTube Music">↗</a>
+              </div>
+              <time>{{ time(m.sentAt) }}</time>
+            </li>
+          }
+          @default {
+            <li class="msg">
+              <span class="author">{{ m.author }}</span>
+              <span class="text">{{ m.text }}</span>
+              <time>{{ time(m.sentAt) }}</time>
+            </li>
+          }
+        }
+      } @empty {
+        <li class="system">Say hi 👋 — or paste a YouTube Music playlist link to share it.</li>
+      }
+    </ol>
+
+    <form class="composer" (ngSubmit)="send(msgInput)">
+      <input #msgInput name="message" [(ngModel)]="message" maxlength="280" autocomplete="off"
+             placeholder="Message or playlist link…" aria-label="Chat message" />
+      <!-- Not [disabled] on emptiness: a disabled default button blocks Enter-to-submit until the next render.
+           send() ignores empty input instead. -->
+      <button type="submit" class="pill-btn send" [class.dim]="!message.trim()" aria-label="Send">➤</button>
+    </form>
+  } @else {
+    <!-- ================= lobby ================= -->
+    <span class="eyebrow">Jam sessions</span>
+    <h2 class="display">Watch together</h2>
+    <p class="lead">The host picks the songs and everyone's TV follows. A jam lasts an hour and can be extended once.</p>
+
+    <label class="field">
+      <span>Your name</span>
+      <input [ngModel]="jam.displayName()" (ngModelChange)="jam.setName($event)" maxlength="30"
+             autocomplete="nickname" placeholder="e.g. Riya" />
+    </label>
+
+    @if (jam.invitedCode(); as code) {
+      <div class="invite">
+        <p>You're invited to jam <strong>{{ code }}</strong></p>
+        <div class="row">
+          <button type="button" class="pill-btn" (click)="jam.join(code)" [disabled]="!nameValid() || jam.busy()">Join jam</button>
+          <button type="button" class="ghost" (click)="jam.dismissInvite()">Not now</button>
+        </div>
+      </div>
+    }
+
+    <form class="create" (ngSubmit)="create()">
+      <input name="jamName" [(ngModel)]="newJamName" maxlength="40" placeholder="Jam name, e.g. Friday night 90s"
+             aria-label="Jam name" />
+      <button type="submit" class="pill-btn" [class.dim]="!nameValid() || !newJamName.trim()" [disabled]="jam.busy()">Start</button>
+    </form>
+
+    @if (jam.error(); as e) { <p class="error" role="alert">{{ e }}</p> }
+
+    <div class="live-head">
+      <h3>Live now</h3>
+      <button type="button" class="ghost tiny" (click)="jam.refreshLobby()" aria-label="Refresh">↻</button>
+    </div>
+    <ul class="lobby">
+      @for (l of jam.lobby(); track l.code) {
+        <li>
+          <div class="info">
+            <strong>{{ l.name }}</strong>
+            <small>{{ l.hostName }} · 👥 {{ l.memberCount }} · {{ minutesLeft(l.expiresAt) }} min left</small>
+          </div>
+          <button type="button" class="ghost" (click)="jam.join(l.code)" [disabled]="!nameValid() || jam.busy()"
+                  [title]="nameValid() ? 'Join' : 'Enter your name first'">Join</button>
+        </li>
+      } @empty {
+        <li class="empty">No jams right now — start one!</li>
+      }
+    </ul>
+  }
+</section>

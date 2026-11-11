@@ -1,0 +1,12 @@
+.env
+.tmp/
+retroo-tv-api/target/
+retroo-tv-api/data/
+retroo-tv/node_modules/
+retroo-tv/dist/
+retroo-tv/.angular/
+.claude/
+.vscode/
+.idea/
+*.log
+retroo-tv/out-tsc/
