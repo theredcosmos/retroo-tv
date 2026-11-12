@@ -1,5 +1,14 @@
 package com.retroo.jam;
 
+import com.retroo.jam.JamModels.AccessMessage;
+import com.retroo.jam.JamModels.AccessType;
+import com.retroo.jam.JamModels.AdmitMessage;
+import com.retroo.jam.JamModels.InviteResponse;
+import com.retroo.jam.JamModels.RequestsPayload;
+import com.retroo.jam.JamModels.Visibility;
+import com.retroo.jam.JamModels.VisibilityPayload;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.SimpMessageType;
 import com.retroo.config.RateLimitConfig;
 import com.retroo.config.RetrooProperties;
 import com.retroo.jam.JamModels.ChatKind;
@@ -63,6 +72,9 @@ public class JamService {
     private static final int CODE_LENGTH = 6;
     private static final int MAX_CHAT_CHARS = 280;
     private static final int MAX_DISPLAY_NAME = 30;
+    /** Waiting list cap per private jam — enough for a party, small enough that spam can't grow memory. */
+    private static final int MAX_PENDING = 20;
+    public static final String ACCESS_QUEUE = "/queue/jam-access";
     private static final Pattern VIDEO_ID = Pattern.compile("^[A-Za-z0-9_-]{11}$");
 
     private final Map<String, JamSession> jams = new ConcurrentHashMap<>();
@@ -109,29 +121,87 @@ public class JamService {
         }
 
         String token = newHostToken();
+        String invite = newSecret(16);
+        Visibility visibility = request.visibility() == null ? Visibility.OPEN : request.visibility();
         JamSession session;
         String code;
         do {
             code = newCode();
-            session = new JamSession(code, name, hostName, token, clock.instant(), config.ttl(), config.chatHistory());
+            session = new JamSession(code, name, hostName, token, invite, visibility, clock.instant(), config.ttl(),
+                    config.chatHistory());
         } while (jams.putIfAbsent(code, session) != null); // collision → draw again (32^6 ≈ 1e9 codes)
 
-        log.info("Jam {} created by '{}' ({} active)", code, hostName, jams.size());
-        return new CreateJamResponse(snapshotOf(session), token);
+        log.info("Jam {} created by '{}' ({}, {} active)", code, hostName, visibility, jams.size());
+        return new CreateJamResponse(snapshotOf(session), token, invite);
     }
 
     /** Lobby: active jams, newest first. Expired-but-not-yet-swept jams are hidden. */
     public List<JamSummary> list() {
         Instant now = clock.instant();
         return jams.values().stream()
-                .filter(j -> !j.isExpired(now))
+                .filter(j -> !j.isExpired(now) && !j.isPrivate()) // private jams are never listed
                 .sorted(Comparator.comparing(JamSession::createdAt).reversed())
                 .map(JamSession::summary)
                 .toList();
     }
 
     public JamSnapshot snapshot(String code) {
-        return snapshotOf(requireJam(code));
+        return snapshot(code, null);
+    }
+
+    /** Full snapshot, or a {@code locked} one for a private jam when {@code key} doesn't open it. */
+    public JamSnapshot snapshot(String code, String key) {
+        JamSession jam = requireJam(code);
+        return jam.mayEnter(null, key) ? snapshotOf(jam) : jam.lockedSnapshot(clock.millis());
+    }
+
+    /** Host: make the jam open or private. Going open lets in everyone who is waiting. */
+    public JamSnapshot setVisibility(String code, String hostToken, Visibility visibility) {
+        JamSession jam = requireJam(code);
+        if (!jam.isHost(hostToken)) {
+            throw new ApiException.Forbidden("Only the host can change who can join.");
+        }
+        if (visibility == null) {
+            throw new ApiException.BadRequest("'visibility' must be OPEN or PRIVATE.");
+        }
+        if (jam.visibility() != visibility) {
+            jam.setVisibility(visibility);
+            publish(jam.code(), EventType.VISIBILITY, new VisibilityPayload(visibility));
+            addSystemChat(jam, visibility == Visibility.PRIVATE
+                    ? "The host made the jam private — new people need an invite link or the host's OK."
+                    : "The host opened the jam — anyone with the code can join.");
+            if (visibility == Visibility.OPEN) {
+                jam.takeAllRequests().forEach(p -> approve(jam, p));
+                publishRequests(jam);
+            }
+        }
+        return snapshotOf(jam);
+    }
+
+    /** Host: the current private invite token. */
+    public InviteResponse invite(String code, String hostToken) {
+        JamSession jam = requireJam(code);
+        if (!jam.isHost(hostToken)) {
+            throw new ApiException.Forbidden("Only the host can see the invite link.");
+        }
+        return new InviteResponse(jam.inviteToken());
+    }
+
+    /** Host: replace the invite token — every old invite link stops working; people already in stay. */
+    public InviteResponse rotateInvite(String code, String hostToken) {
+        JamSession jam = requireJam(code);
+        if (!jam.isHost(hostToken)) {
+            throw new ApiException.Forbidden("Only the host can reset the invite link.");
+        }
+        String token = newSecret(16);
+        jam.setInviteToken(token);
+        return new InviteResponse(token);
+    }
+
+    /** STOMP SUBSCRIBE gate for {@code /topic/jam/{code}}: false = drop the subscription. */
+    public boolean maySubscribe(String code, String sessionId, String key) {
+        JamSession jam = jams.get(normaliseCode(code));
+        return jam == null || jam.mayEnter(sessionId, key); // unknown jam: nothing to leak (and ENDED may follow)
     }
 
     /** One extension of {@code config.extension()}; host only. */
@@ -168,7 +238,15 @@ public class JamService {
      * their own name; it grants nothing else here (control re-checks the token on every command).
      */
     public void join(String code, String sessionId, String requestedName, String hostToken) {
+        join(code, sessionId, requestedName, hostToken, null);
+    }
+
+    public void join(String code, String sessionId, String requestedName, String hostToken, String key) {
         JamSession jam = requireLiveJam(code);
+        if (!jam.isHost(hostToken) && !jam.mayEnter(sessionId, key)) {
+            throw new JamException(JamException.Code.FORBIDDEN,
+                    "This jam is private — ask the host to let you in, or use their invite link.");
+        }
         String name = jam.isHost(hostToken)
                 ? jam.summary().hostName()
                 : normalise(requestedName);
@@ -197,12 +275,64 @@ public class JamService {
         JamSession jam = jams.get(normaliseCode(code));
         if (jam != null) {
             removeMember(jam, sessionId);
+            if (jam.withdrawRequests(sessionId)) {
+                publishRequests(jam);
+            }
         }
     }
 
-    /** Called when a socket closes: the session leaves every jam it was in (normally just one). */
+    /** Called when a socket closes: the session leaves every jam it was in, and withdraws any request to join. */
     public void leaveAll(String sessionId) {
-        jams.values().forEach(jam -> removeMember(jam, sessionId));
+        jams.values().forEach(jam -> {
+            removeMember(jam, sessionId);
+            if (jam.withdrawRequests(sessionId)) {
+                publishRequests(jam);
+            }
+        });
+    }
+
+    /**
+     * "Let me in" for a private jam. The host sees it as a REQUESTS event; the answer comes back to this session on
+     * {@code /user/queue/jam-access}. Asking an open jam is simply approved at once.
+     */
+    public void requestAccess(String code, String sessionId, String requestedName) {
+        JamSession jam = requireLiveJam(code);
+        String name = normalise(requestedName);
+        if (name == null || name.isEmpty() || name.length() > MAX_DISPLAY_NAME) {
+            throw new JamException(JamException.Code.INVALID, "Pick a name of 1–" + MAX_DISPLAY_NAME + " characters.");
+        }
+        if (name.equalsIgnoreCase(jam.summary().hostName())) {
+            throw new JamException(JamException.Code.INVALID, "That's the host's name - pick another one.");
+        }
+        if (!chatLimiter.tryAcquire(jam.code() + ":request:" + sessionId).allowed()) {
+            throw new JamException(JamException.Code.RATE_LIMITED, "You're asking too often — wait a few seconds.");
+        }
+        if (!jam.isPrivate()) {
+            approve(jam, new JamSession.Pending(sessionId, name));
+            return;
+        }
+        if (jam.addRequest(newSecret(9), sessionId, name, MAX_PENDING) == null) {
+            throw new JamException(JamException.Code.JAM_FULL, "Too many people are waiting for this jam right now.");
+        }
+        publishRequests(jam);
+    }
+
+    /** Host answers a request: let in (issues a personal pass) or decline. */
+    public void admit(String code, AdmitMessage message) {
+        JamSession jam = requireLiveJam(code);
+        if (message == null || !jam.isHost(message.hostToken())) {
+            throw new JamException(JamException.Code.FORBIDDEN, "Only the host can let people in.");
+        }
+        JamSession.Pending request = jam.takeRequest(message.requestId());
+        if (request == null) {
+            return; // already answered, withdrawn, or the requester left — nothing to do
+        }
+        if (Boolean.TRUE.equals(message.allow())) {
+            approve(jam, request);
+        } else {
+            sendAccess(request.sessionId(), new AccessMessage(AccessType.DECLINED, jam.code(), null, null));
+        }
+        publishRequests(jam);
     }
 
     public void chat(String code, String sessionId, String rawText) {
@@ -323,6 +453,24 @@ public class JamService {
         publish(jam.code(), EventType.CHAT, message);
     }
 
+    private void approve(JamSession jam, JamSession.Pending request) {
+        String pass = newSecret(16);
+        jam.addPass(pass);
+        sendAccess(request.sessionId(), new AccessMessage(AccessType.APPROVED, jam.code(), pass, snapshotOf(jam)));
+    }
+
+    private void publishRequests(JamSession jam) {
+        publish(jam.code(), EventType.REQUESTS, new RequestsPayload(jam.requests()));
+    }
+
+    /** Personal delivery by STOMP session id (no Principal) — same mechanism as the jam-errors queue. */
+    private void sendAccess(String sessionId, AccessMessage message) {
+        SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
+        accessor.setSessionId(sessionId);
+        accessor.setLeaveMutable(true);
+        messaging.convertAndSendToUser(sessionId, ACCESS_QUEUE, message, accessor.getMessageHeaders());
+    }
+
     private void publishMembers(JamSession jam) {
         List<String> names = jam.memberNames();
         publish(jam.code(), EventType.MEMBERS, new MembersPayload(names, names.size()));
@@ -367,9 +515,14 @@ public class JamService {
     }
 
     private String newHostToken() {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        return newSecret(32);
+    }
+
+    /** {@code bytes} random bytes, base64url without padding. */
+    private String newSecret(int bytes) {
+        byte[] buf = new byte[bytes];
+        random.nextBytes(buf);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
     }
 
     private static String normaliseCode(String code) {

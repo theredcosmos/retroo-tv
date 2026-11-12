@@ -1,5 +1,7 @@
 package com.retroo.config;
 
+import com.retroo.jam.JamService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -34,10 +36,16 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-    private final RetrooProperties properties;
+    /** STOMP SUBSCRIBE header carrying a private jam's key (invite token, pass or host token). */
+    public static final String JAM_KEY_HEADER = "jam-key";
 
-    public WebSocketConfig(RetrooProperties properties) {
+    private final RetrooProperties properties;
+    /** Lazy: JamService needs the messaging template this very configuration creates. */
+    private final ObjectProvider<JamService> jamService;
+
+    public WebSocketConfig(RetrooProperties properties, ObjectProvider<JamService> jamService) {
         this.properties = properties;
+        this.jamService = jamService;
     }
 
     @Override
@@ -68,6 +76,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     String destination = accessor.getDestination();
                     if (destination == null || !destination.startsWith("/app/")) {
                         throw new MessageDeliveryException(message, "Clients may only send to /app/**");
+                    }
+                }
+                // Private jams: only members / key holders may listen to /topic/jam/{code} (chat, playback, members).
+                // Returning null drops the SUBSCRIBE quietly — throwing would send an ERROR frame and close the whole
+                // socket (listener count, feed…), not just refuse this one subscription.
+                if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+                    String destination = accessor.getDestination();
+                    if (destination != null && destination.startsWith(JamService.TOPIC_PREFIX)) {
+                        String code = destination.substring(JamService.TOPIC_PREFIX.length());
+                        String key = accessor.getFirstNativeHeader(JAM_KEY_HEADER);
+                        if (!jamService.getObject().maySubscribe(code, accessor.getSessionId(), key)) {
+                            return null;
+                        }
                     }
                 }
                 return message;

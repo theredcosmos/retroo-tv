@@ -48,6 +48,8 @@ export class JamPanelComponent {
   private readonly chatList = viewChild<ElementRef<HTMLElement>>('chatList');
 
   protected readonly newJamName = signal('');
+  /** Create form: open (listed, anyone with the code) or private (invite link / host's OK). */
+  protected readonly newJamPrivate = signal(false);
   protected message = '';
   protected readonly showMembers = signal(false);
   /** "Join with a code" field: the lobby can't list every jam, so anyone with a code or link can still get in. */
@@ -80,7 +82,7 @@ export class JamPanelComponent {
       return;
     }
     if (!this.newJamName().trim()) return;
-    void this.jam.create(this.newJamName()).then(() => {
+    void this.jam.create(this.newJamName(), this.newJamPrivate() ? 'PRIVATE' : 'OPEN').then(() => {
       if (this.jam.inJam()) this.newJamName.set('');
     });
   }
@@ -109,11 +111,30 @@ export class JamPanelComponent {
   }
 
   protected async copyInvite(): Promise<void> {
+    const link = await this.jam.shareLink();
+    const privateHost = this.jam.isPrivate() && this.jam.isHost();
+    await this.copy(link, privateHost
+      ? 'Private invite link copied — whoever has it joins straight in.'
+      : this.jam.isPrivate()
+        ? 'Link copied — people with it can ask the host to join.'
+        : 'Invite link copied — send it to your friends!');
+  }
+
+  protected async newInviteLink(): Promise<void> {
+    await this.copy(await this.jam.newInviteLink(), 'New invite link copied — old links no longer work.');
+  }
+
+  protected toggleVisibility(): void {
+    void this.jam.setVisibility(this.jam.isPrivate() ? 'OPEN' : 'PRIVATE');
+  }
+
+  private async copy(text: string, message: string): Promise<void> {
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(this.jam.inviteLink());
-      this.toast.show('Invite link copied — send it to your friends!');
+      await navigator.clipboard.writeText(text);
+      this.toast.show(message);
     } catch {
-      this.toast.show(this.jam.inviteLink());
+      this.toast.show(text);
     }
   }
 

@@ -63,6 +63,9 @@ export interface ApiError {
 
 // ---- Jam sessions (gemini.md §8) ---------------------------------------------------------------------------
 
+/** Open: listed, anyone with the code joins. Private: unlisted, needs an invite link or the host's OK. */
+export type JamVisibility = 'OPEN' | 'PRIVATE';
+
 export interface JamSummary {
   code: string;
   name: string;
@@ -70,6 +73,7 @@ export interface JamSummary {
   memberCount: number;
   createdAt: string;
   expiresAt: string;
+  visibility: JamVisibility;
 }
 
 export interface PlaybackState {
@@ -96,11 +100,30 @@ export interface JamSnapshot extends JamSummary {
   playback: PlaybackState | null;
   chat: ChatMessage[];
   serverTime: number;
+  /** True when this is a private jam seen from outside: no members, chat or playback — ask to join. */
+  locked: boolean;
 }
 
 export interface CreateJamResponse {
   jam: JamSnapshot;
   hostToken: string;
+  /** Secret part of the private invite link (/jam/CODE#k=…); host-only. */
+  inviteToken: string;
+}
+
+/** Someone waiting to be let into a private jam (shown to the host). */
+export interface JoinRequest {
+  id: string;
+  name: string;
+}
+
+/** Personal answer to "ask to join", on /user/queue/jam-access. */
+export interface JamAccess {
+  type: 'APPROVED' | 'DECLINED';
+  code: string;
+  /** APPROVED: this guest's own key from now on. */
+  pass?: string;
+  jam?: JamSnapshot;
 }
 
 export type JamEvent =
@@ -109,7 +132,9 @@ export type JamEvent =
   | { type: 'MEMBERS'; payload: { members: string[]; memberCount: number }; serverTime: number }
   | { type: 'EXTENDED'; payload: JamSnapshot; serverTime: number }
   | { type: 'ENDING_SOON'; payload: { expiresAt: string }; serverTime: number }
-  | { type: 'ENDED'; payload: { reason: 'EXPIRED' | 'HOST_ENDED' }; serverTime: number };
+  | { type: 'ENDED'; payload: { reason: 'EXPIRED' | 'HOST_ENDED' }; serverTime: number }
+  | { type: 'REQUESTS'; payload: { requests: JoinRequest[] }; serverTime: number }
+  | { type: 'VISIBILITY'; payload: { visibility: JamVisibility }; serverTime: number };
 
 export interface JamError {
   code: 'RATE_LIMITED' | 'JAM_FULL' | 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID';

@@ -54,7 +54,8 @@ export class App {
   /** Space = play/pause · N = next · P = previous · M = mute · S = shuffle playlist · T = next theme · 1–7 = decades. */
   @HostListener('document:keydown', ['$event'])
   onKey(e: KeyboardEvent): void {
-    const target = e.target as HTMLElement | null;
+    // Key events can target the document itself (extensions, synthetic events): only Elements have closest().
+    const target = e.target instanceof Element ? e.target : null;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (target?.closest('input, textarea, select, dialog, [contenteditable="true"]')) return;
 

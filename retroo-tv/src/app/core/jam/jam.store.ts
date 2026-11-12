@@ -8,11 +8,14 @@ import { ToastService } from '../ui/toast.service';
 import {
   ApiError,
   ChatMessage,
+  JamAccess,
   JamControlAction,
   JamError,
   JamEvent,
   JamSnapshot,
   JamSummary,
+  JamVisibility,
+  JoinRequest,
   PlaybackState,
   SharedPlaylist,
 } from '../models';
@@ -22,13 +25,16 @@ const HOST_HEARTBEAT_MS = 15_000;
 const LOBBY_REFRESH_MS = 20_000;
 const NAME_KEY = 'retroo.displayName';
 const tokenKey = (code: string) => `retroo.jam.${code}.hostToken`;
+/** Guest's key for a private jam (invite token from a link, or the pass the host's OK issued). */
+const guestKeyKey = (code: string) => `retroo.jam.${code}.key`;
 /** Jam this tab was in (sessionStorage) — lets a page reload rejoin automatically. */
 const ACTIVE_KEY = 'retroo.jam.active';
 /** Name this tab joined with — tabs of one browser share localStorage but must keep separate identities. */
 const TAB_NAME_KEY = 'retroo.jam.name';
 const JAM_PATH = /^\/jam\/([A-Z0-9]{6})\/?$/i;
 
-export type JamStatus = 'idle' | 'joining' | 'live' | 'ended';
+/** `waiting` = asked to join a private jam, waiting for the host's answer. */
+export type JamStatus = 'idle' | 'joining' | 'waiting' | 'live' | 'ended';
 
 /**
  * Jam sessions on the client (gemini.md §8).
@@ -72,6 +78,15 @@ export class JamStore {
    * joining someone else's jam suggests it in that jam's chat.
    */
   readonly pendingPlaylist = signal<SharedPlaylist | null>(null);
+  /** Private jam we asked to join, while waiting for the host (name/host shown on the waiting card). */
+  readonly waitingFor = signal<{ code: string; name: string; hostName: string } | null>(null);
+  /** Host: people asking to be let in. */
+  readonly requests = signal<JoinRequest[]>([]);
+  /** Host: secret of the private invite link (fetched lazily after a reload). */
+  readonly inviteToken = signal<string | null>(null);
+  /** Key from an invite link's `#k=` fragment, for the invited code. */
+  private readonly linkKey = readLinkKey();
+  private accessSubs = new Subscription();
 
   /** Ticks every second while in a jam (drives the countdown). */
   private readonly now = signal(Date.now());
@@ -87,6 +102,7 @@ export class JamStore {
   });
   readonly endingSoon = computed(() => this.inJam() && this.msLeft() <= 5 * 60_000);
   readonly canExtend = computed(() => this.isHost() && !this.jam()?.extended);
+  readonly isPrivate = computed(() => this.jam()?.visibility === 'PRIVATE');
   readonly inviteLink = computed(() => {
     const j = this.jam();
     return j ? `${location.origin}/jam/${j.code}` : '';
@@ -164,9 +180,10 @@ export class JamStore {
     this.api.jams().subscribe({ next: (list) => this.lobby.set(list), error: () => undefined });
   }
 
-  async create(jamName: string): Promise<void> {
+  async create(jamName: string, visibility: JamVisibility = 'OPEN'): Promise<void> {
     await this.run(async () => {
-      const res = await firstValueFrom(this.api.createJam(jamName.trim(), this.displayName().trim()));
+      const res = await firstValueFrom(this.api.createJam(jamName.trim(), this.displayName().trim(), visibility));
+      this.inviteToken.set(res.inviteToken);
       try {
         sessionStorage.setItem(tokenKey(res.jam.code), res.hostToken);
       } catch {
@@ -184,13 +201,23 @@ export class JamStore {
 
   async join(code: string): Promise<void> {
     await this.run(async () => {
-      const snapshot = await firstValueFrom(this.api.jam(code.toUpperCase()));
-      const token = readToken(snapshot.code);
+      const upper = code.toUpperCase();
+      const token = readToken(upper);
+      // Key for a private jam: one saved earlier in this tab, or the one in the invite link we opened.
+      const key = readSession(guestKeyKey(upper)) ?? (this.linkKey?.code === upper ? this.linkKey.key : null);
+      const snapshot = await firstValueFrom(this.api.jam(upper, token ?? key));
       if (!token && snapshot.hostName.toLowerCase() === this.displayName().trim().toLowerCase()) {
         // The server refuses guests using the host's name (anti-impersonation); say so before entering.
         this.error.set(`“${snapshot.hostName}” is the host's name — pick another one to join.`);
         return;
       }
+      if (snapshot.locked) {
+        // Private and we hold no valid key (none, or an invite link the host has since replaced): ask the host.
+        writeSession(guestKeyKey(upper), null);
+        this.ask(snapshot);
+        return;
+      }
+      if (key && !token) writeSession(guestKeyKey(upper), key);
       this.hostToken.set(token);
       this.enter(snapshot);
       const pending = this.pendingPlaylist();
@@ -249,6 +276,58 @@ export class JamStore {
     });
   }
 
+  /** Withdraw a pending "let me in" (also what closing the tab does, server-side). */
+  cancelRequest(): void {
+    const w = this.waitingFor();
+    if (w) this.realtime.publish(`/app/jam/${w.code}/leave`, {});
+    this.stopWaiting();
+    this.status.set('idle');
+  }
+
+  /** Host: let someone in, or not. */
+  admit(requestId: string, allow: boolean): void {
+    const j = this.jam();
+    const token = this.hostToken();
+    if (!j || !token) return;
+    this.realtime.publish(`/app/jam/${j.code}/admit`, { hostToken: token, requestId, allow });
+    this.requests.update((list) => list.filter((r) => r.id !== requestId)); // optimistic; REQUESTS confirms
+  }
+
+  /** Host: switch between open and private. */
+  async setVisibility(visibility: JamVisibility): Promise<void> {
+    const j = this.jam();
+    const token = this.hostToken();
+    if (!j || !token) return;
+    await this.run(async () => this.jam.set(await firstValueFrom(this.api.setJamVisibility(j.code, token, visibility))));
+  }
+
+  /**
+   * The link to share. Private jam + host: includes the invite secret (`#k=…` — a fragment, so it never reaches a
+   * server log). Anyone else gets the plain link (for a private jam that leads to "ask to join").
+   */
+  async shareLink(): Promise<string> {
+    const j = this.jam();
+    const token = this.hostToken();
+    if (!j) return '';
+    if (j.visibility !== 'PRIVATE' || !token) return this.inviteLink();
+    let invite = this.inviteToken();
+    if (!invite) {
+      invite = (await firstValueFrom(this.api.jamInvite(j.code, token))).inviteToken;
+      this.inviteToken.set(invite);
+    }
+    return `${location.origin}/jam/${j.code}#k=${invite}`;
+  }
+
+  /** Host: replace the invite link (old links stop working); returns the new link. */
+  async newInviteLink(): Promise<string> {
+    const j = this.jam();
+    const token = this.hostToken();
+    if (!j || !token) return '';
+    const { inviteToken } = await firstValueFrom(this.api.rotateJamInvite(j.code, token));
+    this.inviteToken.set(inviteToken);
+    return `${location.origin}/jam/${j.code}#k=${inviteToken}`;
+  }
+
   dismissInvite(): void {
     this.invitedCode.set(null);
     if (JAM_PATH.test(location.pathname)) history.replaceState(null, '', '/');
@@ -262,6 +341,45 @@ export class JamStore {
     this.drawerOpen.set(false);
   }
 
+  /** Private jam, no key: send "let me in" and wait for the host's answer on our personal access queue. */
+  private ask(snapshot: JamSnapshot): void {
+    const code = snapshot.code;
+    this.stopWaiting();
+    this.waitingFor.set({ code, name: snapshot.name, hostName: snapshot.hostName });
+    this.status.set('waiting');
+    this.invitedCode.set(null);
+    this.accessSubs = new Subscription();
+    this.accessSubs.add(
+      this.realtime.watchJson<JamAccess>('/user/queue/jam-access').subscribe((a) => {
+        if (a.code !== code) return;
+        this.stopWaiting();
+        if (a.type === 'APPROVED' && a.pass && a.jam) {
+          writeSession(guestKeyKey(code), a.pass);
+          this.hostToken.set(null);
+          this.enter(a.jam);
+          this.toast.show(`You're in — welcome to ${a.jam.name}!`);
+        } else {
+          this.status.set('idle');
+          this.error.set(`${snapshot.hostName} didn't let you in this time.`);
+        }
+      }),
+    );
+    this.accessSubs.add(
+      this.realtime.watchJson<JamError>('/user/queue/jam-errors').subscribe((e) => {
+        if (this.status() !== 'waiting') return;
+        this.stopWaiting();
+        this.status.set('idle');
+        this.error.set(e.message);
+      }),
+    );
+    this.realtime.publish(`/app/jam/${code}/request`, { name: this.displayName().trim() });
+  }
+
+  private stopWaiting(): void {
+    this.accessSubs.unsubscribe();
+    this.waitingFor.set(null);
+  }
+
   private enter(snapshot: JamSnapshot): void {
     this.offsetMs = snapshot.serverTime - Date.now();
     this.jam.set(snapshot);
@@ -273,10 +391,18 @@ export class JamStore {
     writeSession(ACTIVE_KEY, snapshot.code);
     writeSession(TAB_NAME_KEY, this.displayName().trim());
     if (location.pathname !== `/jam/${snapshot.code}`) history.pushState(null, '', `/jam/${snapshot.code}`);
+    else if (location.hash) history.replaceState(null, '', `/jam/${snapshot.code}`); // drop the #k= secret
 
     const code = snapshot.code;
+    this.requests.set([]);
     this.subs = new Subscription();
-    this.subs.add(this.realtime.watchJson<JamEvent>(`/topic/jam/${code}`).subscribe((e) => this.onEvent(e)));
+    // Private jams only let key holders listen in: send ours on the SUBSCRIBE frame.
+    const key = this.joinKey(code);
+    this.subs.add(
+      this.realtime
+        .watchJson<JamEvent>(`/topic/jam/${code}`, key ? { 'jam-key': key } : undefined)
+        .subscribe((e) => this.onEvent(e)),
+    );
     this.subs.add(this.realtime.watchJson<JamError>('/user/queue/jam-errors').subscribe((e) => this.onError(e)));
     this.sendJoin(code);
 
@@ -301,6 +427,8 @@ export class JamStore {
     this.chat.set([]);
     this.members.set([]);
     this.hostToken.set(null);
+    this.requests.set([]);
+    this.inviteToken.set(null);
     this.status.set(message ? 'ended' : 'idle');
     if (message) this.toast.show(message);
     if (JAM_PATH.test(location.pathname)) history.pushState(null, '', '/');
@@ -308,15 +436,23 @@ export class JamStore {
 
   private teardown(): void {
     this.subs.unsubscribe();
+    this.accessSubs.unsubscribe();
     clearInterval(this.ticker);
     clearInterval(this.heartbeat);
   }
 
   private sendJoin(code: string): void {
+    const key = readSession(guestKeyKey(code));
     this.realtime.publish(`/app/jam/${code}/join`, {
       name: this.displayName().trim(),
       ...(this.hostToken() ? { hostToken: this.hostToken() } : {}),
+      ...(key ? { key } : {}),
     });
+  }
+
+  /** What unlocks this jam for us: the host token, or a guest key (invite token / pass). */
+  private joinKey(code: string): string | null {
+    return this.hostToken() ?? readSession(guestKeyKey(code));
   }
 
   private control(action: JamControlAction, extra: { song?: unknown } = {}): void {
@@ -351,6 +487,18 @@ export class JamStore {
         break;
       case 'ENDING_SOON':
         this.toast.show('This jam ends in 5 minutes.');
+        break;
+      case 'REQUESTS': {
+        const before = new Set(this.requests().map((r) => r.id));
+        this.requests.set(e.payload.requests);
+        const fresh = e.payload.requests.filter((r) => !before.has(r.id));
+        if (this.isHost() && fresh.length) {
+          this.toast.show(`${fresh.map((r) => r.name).join(', ')} wants to join — open Jam to let them in.`);
+        }
+        break;
+      }
+      case 'VISIBILITY':
+        this.jam.update((j) => (j ? { ...j, visibility: e.payload.visibility } : j));
         break;
       case 'ENDED':
         this.exit(e.payload.reason === 'EXPIRED' ? 'The jam has ended — time is up.' : 'The host ended the jam.');
@@ -418,6 +566,14 @@ function writeSession(key: string, value: string | null): void {
   } catch {
     /* storage blocked — reload just won't auto-rejoin */
   }
+}
+
+/** `#k=…` on an invite link `/jam/CODE#k=…` — the private jam's invite secret. */
+function readLinkKey(): { code: string; key: string } | null {
+  if (typeof location === 'undefined') return null;
+  const code = readInviteCode();
+  const key = new URLSearchParams(location.hash.slice(1)).get('k');
+  return code && key && /^[\w-]{8,64}$/.test(key) ? { code, key } : null;
 }
 
 function readInviteCode(): string | null {

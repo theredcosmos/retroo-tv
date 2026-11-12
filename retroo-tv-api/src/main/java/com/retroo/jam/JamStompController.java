@@ -44,7 +44,18 @@ public class JamStompController {
     public void join(@DestinationVariable String code, @Payload(required = false) JoinMessage message,
                      SimpMessageHeaderAccessor headers) {
         jams.join(code, headers.getSessionId(), message == null ? null : message.name(),
-                message == null ? null : message.hostToken());
+                message == null ? null : message.hostToken(), message == null ? null : message.key());
+    }
+
+    @MessageMapping("/jam/{code}/request")
+    public void request(@DestinationVariable String code, @Payload(required = false) JamModels.RequestMessage message,
+                        SimpMessageHeaderAccessor headers) {
+        jams.requestAccess(code, headers.getSessionId(), message == null ? null : message.name());
+    }
+
+    @MessageMapping("/jam/{code}/admit")
+    public void admit(@DestinationVariable String code, @Payload(required = false) JamModels.AdmitMessage message) {
+        jams.admit(code, message);
     }
 
     @MessageMapping("/jam/{code}/leave")
