@@ -115,6 +115,18 @@
       </button>
     </form>
 
+    <div class="join-code">
+      <span class="eyebrow-sm">Have a code?</span>
+      <form class="create" (ngSubmit)="joinByCode()">
+        <input name="joinCode" class="code" [ngModel]="joinCode()" (ngModelChange)="joinCode.set($event)"
+               maxlength="120" placeholder="Code or invite link, e.g. K7Q2XM" aria-label="Jam code or invite link"
+               autocomplete="off" autocapitalize="characters" spellcheck="false" />
+        <button type="submit" class="pill-btn" [class.dim]="!nameValid() || !parsedCode()" [disabled]="jam.busy()">
+          Join
+        </button>
+      </form>
+    </div>
+
     @if (jam.error(); as e) { <p class="error" role="alert">{{ e }}</p> }
 
     <div class="live-head">

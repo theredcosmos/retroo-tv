@@ -16,6 +16,18 @@ import { PlayerStore } from '../../core/player/player.store';
 import { ChatMessage } from '../../core/models';
 
 /**
+ * A jam code typed or pasted in any reasonable form: "k7q2xm", "K7Q 2XM", or a whole invite link
+ * ("https://…/jam/K7Q2XM"). Returns the 6-character code, or null if there isn't one.
+ */
+export function parseJamCode(input: string): string | null {
+  const text = input.trim();
+  const fromLink = /\/jam\/([A-Za-z0-9]{6})(?![A-Za-z0-9])/.exec(text);
+  if (fromLink) return fromLink[1].toUpperCase();
+  const bare = text.replace(/[\s-]/g, '');
+  return /^[A-Za-z0-9]{6}$/.test(bare) ? bare.toUpperCase() : null;
+}
+
+/**
  * Right-hand column: the jam lobby (start a jam / join a live one / accept an invite link) or, inside a jam,
  * the session header (code, members, countdown, host actions) and the chat.
  *
@@ -38,6 +50,9 @@ export class JamPanelComponent {
   protected readonly newJamName = signal('');
   protected message = '';
   protected readonly showMembers = signal(false);
+  /** "Join with a code" field: the lobby can't list every jam, so anyone with a code or link can still get in. */
+  protected readonly joinCode = signal('');
+  protected readonly parsedCode = computed(() => parseJamCode(this.joinCode()));
 
   protected readonly timeLeft = computed(() => {
     const s = Math.floor(this.jam.msLeft() / 1000);
@@ -67,6 +82,21 @@ export class JamPanelComponent {
     if (!this.newJamName().trim()) return;
     void this.jam.create(this.newJamName()).then(() => {
       if (this.jam.inJam()) this.newJamName.set('');
+    });
+  }
+
+  protected joinByCode(): void {
+    if (!this.nameValid()) {
+      this.toast.show('Enter your name first.', 'error');
+      return;
+    }
+    const code = this.parsedCode();
+    if (!code) {
+      this.toast.show('Jam codes are 6 letters or numbers, like K7Q2XM.', 'error');
+      return;
+    }
+    void this.jam.join(code).then(() => {
+      if (this.jam.inJam()) this.joinCode.set('');
     });
   }
 
