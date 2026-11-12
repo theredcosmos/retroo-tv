@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { AbstractControl, NonNullableFormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { FeedStore } from '../../core/feed/feed.store';
+import { JamStore } from '../../core/jam/jam.store';
 import { ApiError } from '../../core/models';
 import { ToastService } from '../../core/ui/toast.service';
 
@@ -43,10 +44,20 @@ export class SharePlaylistDialogComponent {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly feed = inject(FeedStore);
   private readonly toast = inject(ToastService);
+  protected readonly jam = inject(JamStore);
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
 
   protected readonly submitting = signal(false);
   protected readonly formError = signal<string | null>(null);
+  /** "Also play it in a jam" — wording follows the user's jam role (see JamStore.playlistToJam). */
+  protected readonly toJam = signal(false);
+  protected readonly jamOptionLabel = computed(() =>
+    this.jam.isHost()
+      ? 'Play it for everyone in my jam'
+      : this.jam.inJam()
+        ? 'Suggest it in the jam chat'
+        : 'Start a jam session with it',
+  );
 
   protected readonly form = this.fb.group({
     displayName: [readName(), [Validators.required, Validators.maxLength(40)]],
@@ -57,6 +68,7 @@ export class SharePlaylistDialogComponent {
 
   protected open(): void {
     this.formError.set(null);
+    this.toJam.set(this.jam.inJam());
     this.dialog().nativeElement.showModal();
   }
 
@@ -79,12 +91,17 @@ export class SharePlaylistDialogComponent {
     const value = this.form.getRawValue();
 
     this.feed.share({ ...value, note: value.note.trim() || undefined }).subscribe({
-      next: () => {
+      next: (created) => {
         saveName(value.displayName);
         this.submitting.set(false);
         this.form.reset({ displayName: value.displayName, playlistUrl: '', playlistName: '', note: '' });
         this.close();
-        this.toast.show('Thanks! Your playlist is on the wall 🎶');
+        if (this.toJam()) {
+          if (!this.jam.displayName().trim()) this.jam.setName(value.displayName);
+          this.jam.playlistToJam(created);
+        } else {
+          this.toast.show('Thanks! Your playlist is on the wall 🎶');
+        }
       },
       error: (err: ApiError) => {
         this.submitting.set(false);

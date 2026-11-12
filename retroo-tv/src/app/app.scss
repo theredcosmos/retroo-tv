@@ -12,7 +12,8 @@
   z-index: 1;
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(200px, 280px);
+  /* Side columns kept lean: the TV is the subject and gets the width. */
+  grid-template-columns: minmax(190px, 250px) minmax(0, 1fr) minmax(190px, 250px);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
     'header header   header'

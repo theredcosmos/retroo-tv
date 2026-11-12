@@ -6,6 +6,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -34,7 +35,7 @@ export class JamPanelComponent {
   private readonly player = inject(PlayerStore);
   private readonly chatList = viewChild<ElementRef<HTMLElement>>('chatList');
 
-  protected newJamName = '';
+  protected readonly newJamName = signal('');
   protected message = '';
   protected readonly showMembers = signal(false);
 
@@ -51,6 +52,11 @@ export class JamPanelComponent {
       const el = this.chatList()?.nativeElement;
       if (el) setTimeout(() => (el.scrollTop = el.scrollHeight));
     });
+    // "Play in jam" from the feed / share dialog: suggest the playlist's name as the jam name.
+    effect(() => {
+      const p = this.jam.pendingPlaylist();
+      if (p && !untracked(this.newJamName).trim()) this.newJamName.set(p.playlistName.slice(0, 40));
+    });
   }
 
   protected create(): void {
@@ -58,8 +64,10 @@ export class JamPanelComponent {
       this.toast.show('Enter your name first.', 'error');
       return;
     }
-    if (!this.newJamName.trim()) return;
-    void this.jam.create(this.newJamName).then(() => (this.newJamName = ''));
+    if (!this.newJamName().trim()) return;
+    void this.jam.create(this.newJamName()).then(() => {
+      if (this.jam.inJam()) this.newJamName.set('');
+    });
   }
 
   protected send(input: HTMLInputElement): void {

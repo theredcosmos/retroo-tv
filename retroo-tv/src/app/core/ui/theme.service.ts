@@ -1,6 +1,6 @@
 import { DOCUMENT, Injectable, computed, effect, inject, signal } from '@angular/core';
 
-export type ThemeId = 'living' | 'rural' | 'city' | 'villa' | 'midnight' | 'neon' | 'studio' | 'ivory' | 'noir';
+export type ThemeId = 'living' | 'rural' | 'city' | 'villa' | 'midnight' | 'neon' | 'studio' | 'noir';
 
 /** Which room (soft, out-of-focus light composition) to draw. */
 export type SceneId = 'living' | 'rural' | 'city' | 'villa' | 'neon' | 'studio';
@@ -34,16 +34,14 @@ export const THEMES: readonly ThemeOption[] = [
     scene: 'rural', tv: 'portable', swatch: ['#e6dcc6', '#7f9a55'], metaColor: '#2a2416' },
   { id: 'city', group: 'Rooms', label: 'City Night', description: 'Skyline bokeh, silver stereo TV',
     scene: 'city', tv: 'sleek', swatch: ['#c4c8d2', '#1d2538'], metaColor: '#0a0d16' },
-  { id: 'villa', group: 'Rooms', label: 'Villa', description: 'Arched daylight, walnut cabinet',
-    scene: 'villa', tv: 'cabinet', swatch: ['#f1e7d5', '#6a4223'], metaColor: '#e9dfcd' },
-  { id: 'midnight', group: 'Rooms', label: 'Midnight', description: 'Moonlight and a warm screen',
-    scene: 'living', tv: 'console', night: true, swatch: ['#b9c8ff', '#0f1424'], metaColor: '#06080f' },
+  { id: 'villa', group: 'Rooms', label: 'Ivory Villa', description: 'Creamy daylight, walnut cabinet',
+    scene: 'villa', tv: 'cabinet', swatch: ['#e4d5ba', '#6a4223'], metaColor: '#d9cbb0' },
+  { id: 'midnight', group: 'Rooms', label: 'Midnight', description: 'Moonlight, midnight-blue set',
+    scene: 'living', tv: 'console', night: true, swatch: ['#b9c8ff', '#2c3a5c'], metaColor: '#06080f' },
   { id: 'neon', group: 'Rooms', label: 'Neon Den', description: 'Violet glow, gloss black TV',
     scene: 'neon', tv: 'gloss', swatch: ['#f3a6ff', '#170828'], metaColor: '#0a0412' },
   { id: 'studio', group: 'Minimal', label: 'Studio', description: 'Charcoal, one soft spotlight',
     scene: 'studio', tv: 'console', swatch: ['#2b2a28', '#6b4429'], metaColor: '#0d0d0d' },
-  { id: 'ivory', group: 'Minimal', label: 'Ivory', description: 'Gallery white, daylight',
-    scene: 'studio', tv: 'console', swatch: ['#f6f3ee', '#7a4e30'], metaColor: '#efebe4' },
   { id: 'noir', group: 'Minimal', label: 'Noir', description: 'Black & white cinema',
     scene: 'studio', tv: 'gloss', swatch: ['#f0f0f0', '#0a0a0a'], metaColor: '#050505' },
 ];
@@ -71,7 +69,7 @@ export class ThemeService {
       const t = this.option();
       const html = this.doc.documentElement;
       html.dataset['theme'] = t.id;
-      html.style.colorScheme = t.id === 'villa' || t.id === 'ivory' ? 'light' : 'dark';
+      html.style.colorScheme = t.id === 'villa' ? 'light' : 'dark';
       this.doc.querySelector('meta[name="theme-color"]')?.setAttribute('content', t.metaColor);
       try {
         localStorage.setItem(STORAGE_KEY, t.id);
@@ -98,7 +96,9 @@ function themeById(id: ThemeId): ThemeOption {
 
 function readStored(): ThemeId {
   try {
-    const v = localStorage.getItem(STORAGE_KEY);
+    // 'ivory' was merged into 'villa' (Ivory Villa): keep people who picked it on the merged theme.
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const v = stored === 'ivory' ? 'villa' : stored;
     return THEMES.some((t) => t.id === v) ? (v as ThemeId) : 'living';
   } catch {
     return 'living';

@@ -14,6 +14,7 @@ import {
   JamSnapshot,
   JamSummary,
   PlaybackState,
+  SharedPlaylist,
 } from '../models';
 
 const MAX_CHAT = 100;
@@ -66,6 +67,11 @@ export class JamStore {
   readonly busy = signal(false);
   /** Jam drawer visibility (UI state shared by the header button and the drawer). */
   readonly drawerOpen = signal(readInviteCode() !== null);
+  /**
+   * A shared playlist the user chose to "play in a jam" while not in one. Starting a jam puts it on the TV;
+   * joining someone else's jam suggests it in that jam's chat.
+   */
+  readonly pendingPlaylist = signal<SharedPlaylist | null>(null);
 
   /** Ticks every second while in a jam (drives the countdown). */
   private readonly now = signal(Date.now());
@@ -128,9 +134,9 @@ export class JamStore {
       if (this.isHost()) this.control('SEEK');
     });
 
-    // Lobby polling only while browsing (not inside a jam).
+    // Lobby polling only while the lobby is actually on screen (drawer open, not inside a jam).
     effect(() => {
-      const browsing = this.status() === 'idle' || this.status() === 'ended';
+      const browsing = this.drawerOpen() && (this.status() === 'idle' || this.status() === 'ended');
       untracked(() => (browsing ? this.startLobby() : this.stopLobby()));
     });
 
@@ -168,15 +174,49 @@ export class JamStore {
       }
       this.hostToken.set(res.hostToken);
       this.enter(res.jam);
+      const pending = this.pendingPlaylist();
+      if (pending) {
+        this.pendingPlaylist.set(null);
+        this.hostPlaylist(pending);
+      }
     });
   }
 
   async join(code: string): Promise<void> {
     await this.run(async () => {
       const snapshot = await firstValueFrom(this.api.jam(code.toUpperCase()));
-      this.hostToken.set(readToken(snapshot.code));
+      const token = readToken(snapshot.code);
+      if (!token && snapshot.hostName.toLowerCase() === this.displayName().trim().toLowerCase()) {
+        // The server refuses guests using the host's name (anti-impersonation); say so before entering.
+        this.error.set(`“${snapshot.hostName}” is the host's name — pick another one to join.`);
+        return;
+      }
+      this.hostToken.set(token);
       this.enter(snapshot);
+      const pending = this.pendingPlaylist();
+      if (pending) {
+        this.pendingPlaylist.set(null);
+        this.playlistToJam(pending);
+      }
     });
+  }
+
+  /**
+   * "Play in jam" for a shared playlist — what it means depends on where this user is:
+   *  - host of a live jam → put it on the TV (guests follow) and post it in the chat so everyone sees what's on;
+   *  - guest → suggest it in the chat; the host gets a "Play on TV" button on the message;
+   *  - not in a jam → open the jam drawer with the playlist waiting; starting a jam plays it.
+   */
+  playlistToJam(p: SharedPlaylist): void {
+    if (this.isHost()) {
+      this.hostPlaylist(p);
+    } else if (this.inJam()) {
+      this.sendChat(`Can we play “${p.playlistName}”? ${p.playlistUrl}`);
+      this.toast.show('Suggested to the jam — the host can put it on the TV.');
+    } else {
+      this.pendingPlaylist.set(p);
+      this.drawerOpen.set(true);
+    }
   }
 
   leave(): void {
@@ -215,6 +255,12 @@ export class JamStore {
   }
 
   // ---- internals ---------------------------------------------------------------------------------------
+
+  private hostPlaylist(p: SharedPlaylist): void {
+    void this.player.playPlaylist(p);
+    this.sendChat(`🎶 Now playing “${p.playlistName}” (shared by ${p.displayName}) ${p.playlistUrl}`);
+    this.drawerOpen.set(false);
+  }
 
   private enter(snapshot: JamSnapshot): void {
     this.offsetMs = snapshot.serverTime - Date.now();

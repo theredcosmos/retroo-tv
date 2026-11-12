@@ -121,11 +121,13 @@
 /* ---------------------------------------------------------------------------
    cabinet — villa console: walnut furniture with an inlaid brass line, a soft top
    rail, louvered doors folded open, tall tapered legs.
+   Sized larger than the other sets: the folded doors used to eat a quarter of the
+   width, leaving a small picture. Slimmer doors + a wider/taller size budget.
    --------------------------------------------------------------------------- */
 :host([data-model='cabinet']) {
-  width: min(100%, 640px, calc((100dvh - 330px) * 1.3));
+  width: min(100%, 900px, calc((100dvh - 320px) * 1.75));
 
-  .tv { padding: 3% 12% 0; }
+  .tv { padding: 3% 5% 0; }
   .crest {
     display: block;
     position: absolute;
@@ -138,6 +140,7 @@
     box-shadow: inset 0 1px 0 var(--trim);
   }
   .cabinet {
+    grid-template-columns: 1fr 13%;
     border-radius: 6px;
     box-shadow:
       inset 0 0 0 5px var(--cabinet-2),
@@ -149,14 +152,14 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 24%;
+    width: 18%;
     background:
       repeating-linear-gradient(180deg, transparent 0 8px, rgba(0, 0, 0, 0.28) 8px 10px) 14% 8% / 72% 84% no-repeat,
       linear-gradient(90deg, var(--cabinet-1), var(--cabinet-3));
     box-shadow: inset 0 0 0 1px var(--trim);
 
-    &.left { right: 100%; transform-origin: right; transform: perspective(700px) rotateY(-42deg); border-radius: 6px 0 0 6px; }
-    &.right { left: 100%; transform-origin: left; transform: perspective(700px) rotateY(42deg); border-radius: 0 6px 6px 0; }
+    &.left { right: 100%; transform-origin: right; transform: perspective(700px) rotateY(-62deg); border-radius: 6px 0 0 6px; }
+    &.right { left: 100%; transform-origin: left; transform: perspective(700px) rotateY(62deg); border-radius: 0 6px 6px 0; }
   }
   .feet { padding: 0 3%; }
   .feet span {

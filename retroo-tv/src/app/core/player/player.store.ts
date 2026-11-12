@@ -37,10 +37,13 @@ const LOADING_TITLE = 'Tuning in…';
 
 /** Stop skipping after this many unplayable videos in a row, so a bad catalog can't cause an infinite loop. */
 const MAX_CONSECUTIVE_SKIPS = 5;
-/** Minimum time the static is visible when the user changes channel — sells the "tuning" effect. */
-export const CHANNEL_STATIC_MS = 1_500;
-/** Static between two songs (auto-advance) — the "90s TV losing signal" moment. */
-export const SIGNAL_LOSS_MS = 3_200;
+/**
+ * Minimum time the static is visible when the user changes channel — sells the "tuning" effect. Kept short:
+ * the static also stays up while YouTube buffers, so a longer floor only made every click feel laggy.
+ */
+export const CHANNEL_STATIC_MS = 700;
+/** Static between two songs (auto-advance) — the "90s TV losing signal" moment (matches `snow-in` in the CSS). */
+export const SIGNAL_LOSS_MS = 2_200;
 /** Jam guests re-seek when they are further than this from the host's position. */
 const DRIFT_S = 2;
 /** How long the "picture warming up" effect runs once the new video actually starts. */
@@ -187,10 +190,15 @@ export class PlayerStore {
   /** First user gesture: must call play() synchronously for browsers to allow sound. */
   tuneIn(): void {
     this.awaitingGesture.set(false);
-    if (this.followMode() && this.latestRemote) {
-      this.yt.play(); // synchronous inside the click — unlocks audio
-      this.status.set('on');
-      this.syncToRemote();
+    if (this.followMode()) {
+      if (this.latestRemote) {
+        this.yt.play(); // synchronous inside the click — unlocks audio
+        this.status.set('on');
+        this.syncToRemote();
+      } else {
+        // Jam guest, host hasn't played anything yet: don't start our own random song — show snow and wait.
+        this.status.set('tuning');
+      }
       return;
     }
     if (this.current()) {
@@ -247,7 +255,7 @@ export class PlayerStore {
       return;
     }
     if (this.followMode()) return;
-    this.isPlaying() ? this.yt.pause() : this.yt.play();
+    this.yt.wantsPlaying() ? this.yt.pause() : this.yt.play();
   }
 
   seek(seconds: number): void {
@@ -278,6 +286,7 @@ export class PlayerStore {
       return;
     }
     this.source.set({ kind: 'playlist', playlistId, name: p.playlistName, sharedBy: p.displayName, url: p.playlistUrl });
+    this.history = [];
     this.playlistIds = ids;
     this.playlistIndex = 0;
     this.consecutiveSkips = 0;
@@ -286,8 +295,10 @@ export class PlayerStore {
 
   /** Back to the decade shuffle (from playlist mode). */
   async leavePlaylist(): Promise<void> {
+    if (this.followMode()) return;
     const slug = this.activeDecade();
     this.source.set({ kind: 'decade' });
+    this.history = [];
     await this.tuneTo(() => this.pickRandom(slug), 'channel');
   }
 
@@ -413,6 +424,20 @@ export class PlayerStore {
       return;
     }
     this.history.pop(); // never offer an unplayable song via "previous"
+    if (this.awaitingGesture()) {
+      // Still behind "Tap to tune in": quietly cue a different song. next() would start playback (and dismiss
+      // the prompt) without the user's click.
+      try {
+        const song = await this.pickRandom(this.activeDecade());
+        this.current.set(song);
+        this.history = [song];
+        this.remember(song.videoId);
+        await this.yt.cue(song.videoId);
+      } catch (e) {
+        this.fail(e);
+      }
+      return;
+    }
     await this.next();
   }
 

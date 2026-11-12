@@ -1,6 +1,13 @@
 package com.retroo.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageDeliveryException;
+import org.springframework.messaging.simp.config.ChannelRegistration;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -44,6 +51,28 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // Deliver messages to each session in the order they were published (e.g. STATE before the CHAT that
         // follows it). Without this the outbound thread pool may reorder them.
         registry.setPreservePublishOrder(true);
+    }
+
+    /**
+     * Clients may SEND only to {@code /app/**} (our controllers, which check host tokens, membership, rate limits
+     * and links). Without this a client could SEND straight to {@code /topic/jam/{code}} or {@code /topic/playlists}
+     * and the simple broker would fan a forged STATE/ENDED/CHAT event or feed entry out to everyone.
+     */
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(new ChannelInterceptor() {
+            @Override
+            public Message<?> preSend(Message<?> message, MessageChannel channel) {
+                var accessor = StompHeaderAccessor.wrap(message);
+                if (StompCommand.SEND.equals(accessor.getCommand())) {
+                    String destination = accessor.getDestination();
+                    if (destination == null || !destination.startsWith("/app/")) {
+                        throw new MessageDeliveryException(message, "Clients may only send to /app/**");
+                    }
+                }
+                return message;
+            }
+        });
     }
 
     @Override

@@ -99,10 +99,20 @@
       </div>
     }
 
+    @if (jam.pendingPlaylist(); as p) {
+      <div class="invite pending">
+        <p>🎶 <strong>{{ p.playlistName }}</strong> is ready to play.
+          Start a jam and it goes on everyone's TV — or join a live jam to suggest it there.</p>
+        <button type="button" class="ghost" (click)="jam.pendingPlaylist.set(null)">Cancel</button>
+      </div>
+    }
+
     <form class="create" (ngSubmit)="create()">
-      <input name="jamName" [(ngModel)]="newJamName" maxlength="40" placeholder="Jam name, e.g. Friday night 90s"
-             aria-label="Jam name" />
-      <button type="submit" class="pill-btn" [class.dim]="!nameValid() || !newJamName.trim()" [disabled]="jam.busy()">Start</button>
+      <input name="jamName" [ngModel]="newJamName()" (ngModelChange)="newJamName.set($event)" maxlength="40"
+             placeholder="Jam name, e.g. Friday night 90s" aria-label="Jam name" />
+      <button type="submit" class="pill-btn" [class.dim]="!nameValid() || !newJamName().trim()" [disabled]="jam.busy()">
+        {{ jam.pendingPlaylist() ? 'Start & play' : 'Start' }}
+      </button>
     </form>
 
     @if (jam.error(); as e) { <p class="error" role="alert">{{ e }}</p> }

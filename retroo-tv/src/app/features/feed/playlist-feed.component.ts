@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
 import { FeedStore } from '../../core/feed/feed.store';
+import { JamStore } from '../../core/jam/jam.store';
 import { PlayerStore } from '../../core/player/player.store';
 import { SharedPlaylist } from '../../core/models';
 
@@ -8,7 +9,8 @@ const SECONDS_PER_ITEM = 4;
 
 /**
  * "Listener channels": playlists other visitors shared. Each one can be **tuned in** — played right here on the
- * TV (PlayerStore.playPlaylist) — or opened on YouTube Music.
+ * TV (PlayerStore.playPlaylist) — taken into a **jam** (JamStore.playlistToJam: play it for everyone as host,
+ * suggest it as a guest, or start a jam with it), or opened on YouTube Music.
  *
  * Like the reference site the list sits directly on the room, no box: text with a soft shadow, faded top and
  * bottom. Seamless loop = the list rendered twice, track animated by −50%; the copy is aria-hidden/untabbable;
@@ -30,7 +32,7 @@ const SECONDS_PER_ITEM = 4;
           <ul [attr.aria-hidden]="copy === 1 ? true : null">
             @for (p of feed.items(); track p.id) {
               <li [class.fresh]="p.id === feed.freshId() && copy === 0"
-                  [class.on]="playingId() === playlistId(p)">
+                  [class.on]="playingUrl() === p.playlistUrl">
                 <p class="line">
                   <span class="who">{{ p.displayName }}</span>
                   <span class="name">{{ p.playlistName }}</span>
@@ -40,7 +42,12 @@ const SECONDS_PER_ITEM = 4;
                   <button type="button" class="tune" (click)="tune(p)" [disabled]="!player.canControl()"
                           [tabIndex]="copy === 1 ? -1 : 0"
                           [attr.aria-label]="'Tune in to ' + p.playlistName">
-                    @if (playingId() === playlistId(p)) { On air } @else { ▶ Tune in }
+                    @if (playingUrl() === p.playlistUrl) { On air } @else { ▶ Tune in }
+                  </button>
+                  <button type="button" class="tune" (click)="jam.playlistToJam(p)"
+                          [tabIndex]="copy === 1 ? -1 : 0" [title]="jamHint()"
+                          [attr.aria-label]="jamLabel() + ': ' + p.playlistName">
+                    👥 {{ jamLabel() }}
                   </button>
                   <a [href]="p.playlistUrl" target="_blank" rel="noopener noreferrer nofollow"
                      [tabIndex]="copy === 1 ? -1 : 0">YouTube Music ↗</a>
@@ -65,7 +72,7 @@ const SECONDS_PER_ITEM = 4;
       &:hover .track, &:focus-within .track { animation-play-state: paused; }
       &.static .track { animation: none; }
     }
-    .track { animation: scroll linear infinite; }
+    .track { animation: scroll linear infinite; will-change: transform; }
     ul { list-style: none; margin: 0; padding: 0; }
     li {
       padding: 12px 0 12px 12px;
@@ -81,7 +88,8 @@ const SECONDS_PER_ITEM = 4;
     q { display: block; margin-top: 3px; font-size: 12px; font-style: italic; color: var(--ink-dim); }
     q::before { content: '“'; } q::after { content: '”'; }
     .actions {
-      display: flex; gap: 14px; margin-top: 6px; font-size: 11px; opacity: 0.75;
+      display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 11px; opacity: 0.75;
+      white-space: nowrap;
       transition: opacity var(--fast) var(--ease);
       a { color: var(--ink-faint); text-decoration: none; &:hover { color: var(--ink); } }
     }
@@ -104,13 +112,25 @@ const SECONDS_PER_ITEM = 4;
 export class PlaylistFeedComponent implements OnInit {
   protected readonly feed = inject(FeedStore);
   protected readonly player = inject(PlayerStore);
+  protected readonly jam = inject(JamStore);
 
   protected readonly copies = computed(() => (this.feed.items().length >= 4 ? [0, 1] : [0]));
   protected readonly duration = computed(() => Math.max(24, this.feed.items().length * SECONDS_PER_ITEM));
-  protected readonly playingId = computed(() => {
+  /** URL of the playlist on the TV (compared by string — no per-item URL parsing on every render). */
+  protected readonly playingUrl = computed(() => {
     const src = this.player.source();
-    return src.kind === 'playlist' ? src.playlistId : null;
+    return src.kind === 'playlist' ? src.url : null;
   });
+  protected readonly jamLabel = computed(() =>
+    this.jam.isHost() ? 'Play in jam' : this.jam.inJam() ? 'Suggest to jam' : 'Start a jam',
+  );
+  protected readonly jamHint = computed(() =>
+    this.jam.isHost()
+      ? "Put it on everyone's TV in your jam"
+      : this.jam.inJam()
+        ? 'Post it in the jam chat — the host can play it'
+        : 'Start a jam session with this playlist playing',
+  );
 
   ngOnInit(): void {
     this.feed.load();
@@ -118,9 +138,5 @@ export class PlaylistFeedComponent implements OnInit {
 
   protected tune(p: SharedPlaylist): void {
     void this.player.playPlaylist(p);
-  }
-
-  protected playlistId(p: SharedPlaylist): string | null {
-    return new URL(p.playlistUrl).searchParams.get('list');
   }
 }

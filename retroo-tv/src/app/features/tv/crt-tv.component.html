@@ -16,6 +16,7 @@
         [class.arriving]="player.arriving()"
         [class.power-on]="poweringOn()"
         [class.live]="player.status() === 'on' && !player.showStatic()"
+        [class.glitch]="glitching()"
       >
         <div class="yt-crop">
           <div #ytHost class="yt-host"></div>
@@ -24,7 +25,7 @@
         <canvas
           appStaticNoise
           class="noise"
-          [appNoiseActive]="player.showStatic()"
+          [appNoiseActive]="player.showStatic() || glitching()"
           [class.visible]="player.showStatic()"
           aria-hidden="true"
         ></canvas>

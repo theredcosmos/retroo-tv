@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { PlayerStore } from '../../core/player/player.store';
 import { DurationPipe } from '../../shared/duration.pipe';
 
@@ -47,16 +47,17 @@ import { DurationPipe } from '../../shared/duration.pipe';
       </div>
 
       <div class="timeline">
-        <span class="time">{{ player.progress() | duration }}</span>
+        <span class="time">{{ position() | duration }}</span>
         <input
           type="range"
           min="0"
           step="1"
           aria-label="Seek"
           [max]="player.duration() || 0"
-          [value]="player.progress()"
+          [value]="position()"
           [disabled]="!player.duration() || !player.canControl()"
-          [style.--pct.%]="player.duration() ? (player.progress() / player.duration()) * 100 : 0"
+          [style.--pct.%]="player.duration() ? (position() / player.duration()) * 100 : 0"
+          (input)="dragging.set(+$any($event.target).value)"
           (change)="seek($event)"
         />
         <span class="time">{{ player.duration() | duration }}</span>
@@ -132,8 +133,12 @@ import { DurationPipe } from '../../shared/duration.pipe';
 })
 export class NowPlayingBarComponent {
   protected readonly player = inject(PlayerStore);
+  /** Thumb position while the user drags (null otherwise) — the playback tick must not move it meanwhile. */
+  protected readonly dragging = signal<number | null>(null);
+  protected readonly position = computed(() => this.dragging() ?? this.player.progress());
 
   protected seek(e: Event): void {
     this.player.seek(Number((e.target as HTMLInputElement).value));
+    this.dragging.set(null);
   }
 }

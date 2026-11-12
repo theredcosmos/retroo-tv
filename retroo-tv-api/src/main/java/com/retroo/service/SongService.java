@@ -44,7 +44,9 @@ public class SongService {
 
     @Autowired // two constructors exist (the package-private one is for tests), so tell Spring which to use
     public SongService(SongRepository songs, YouTubeLinkParser linkParser, YouTubeMetadataClient metadataClient) {
-        this(songs, linkParser, metadataClient, RandomGenerator.getDefault());
+        // RandomGenerator.getDefault() is not thread-safe and this service is shared by all request threads:
+        // delegate each draw to the calling thread's ThreadLocalRandom instead.
+        this(songs, linkParser, metadataClient, () -> java.util.concurrent.ThreadLocalRandom.current().nextLong());
     }
 
     SongService(SongRepository songs, YouTubeLinkParser linkParser, YouTubeMetadataClient metadataClient,
@@ -119,7 +121,11 @@ public class SongService {
             long candidates = s.count().getAsLong();
             if (candidates > 0) {
                 int offset = random.nextInt((int) Math.min(candidates, Integer.MAX_VALUE));
-                return SongResponse.from(s.fetch().apply(PageRequest.of(offset, 1)).get(0));
+                var page = s.fetch().apply(PageRequest.of(offset, 1));
+                if (!page.isEmpty()) {
+                    return SongResponse.from(page.get(0));
+                }
+                // A song was deleted between the COUNT and this fetch: fall through to the next strategy.
             }
         }
         throw new ApiException.NotFound("No songs in the " + decade.label() + " yet.");

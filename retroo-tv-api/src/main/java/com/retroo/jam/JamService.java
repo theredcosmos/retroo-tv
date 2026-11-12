@@ -92,14 +92,15 @@ public class JamService {
     // =====================================================================================================
 
     public CreateJamResponse create(CreateJamRequest request, String clientIp) {
+        // Validate first: a malformed request must not spend the caller's rate-limit budget.
+        String name = requireText(normalise(request.name()), 40, "name");
+        String hostName = requireText(normalise(request.hostName()), MAX_DISPLAY_NAME, "hostName");
         var decision = createLimiter.tryAcquire("jam-create:" + clientIp);
         if (!decision.allowed()) {
             long seconds = Math.max(1, decision.retryAfter().toSeconds());
             throw new ApiException.TooManyRequests(
                     "You've started a lot of jams. Try again in " + (seconds + 59) / 60 + " min.", seconds);
         }
-        String name = requireText(normalise(request.name()), 40, "name");
-        String hostName = requireText(normalise(request.hostName()), MAX_DISPLAY_NAME, "hostName");
 
         // Capacity check and insert are not one atomic step, so two racing creates could overshoot the cap by a
         // few — harmless for a soft resource limit, and far cheaper than a global lock.
@@ -174,7 +175,12 @@ public class JamService {
         if (name == null || name.isEmpty() || name.length() > MAX_DISPLAY_NAME) {
             throw new JamException(JamException.Code.INVALID, "Pick a name of 1–" + MAX_DISPLAY_NAME + " characters.");
         }
+        if (!jam.isHost(hostToken) && name.equalsIgnoreCase(jam.summary().hostName())) {
+            // Otherwise a guest could chat under the host's name, indistinguishable from them.
+            throw new JamException(JamException.Code.INVALID, "That's the host's name - pick another one.");
+        }
         boolean wasMember = jam.hasMember(sessionId);
+        String previousName = jam.memberName(sessionId);
         if (!jam.addMember(sessionId, name, config.maxMembers())) {
             throw new JamException(JamException.Code.JAM_FULL,
                     "This jam is full (" + config.maxMembers() + " people).");
@@ -182,6 +188,8 @@ public class JamService {
         if (!wasMember) {
             addSystemChat(jam, name + " joined");
             publishMembers(jam);
+        } else if (!name.equals(previousName)) {
+            publishMembers(jam); // same socket re-joined under a new name: everyone's member list must follow
         }
     }
 
@@ -203,14 +211,14 @@ public class JamService {
         if (author == null) {
             throw new JamException(JamException.Code.FORBIDDEN, "Join the jam before chatting.");
         }
+        String text = normalise(rawText);
+        if (text == null || text.isEmpty() || text.length() > MAX_CHAT_CHARS) {
+            throw new JamException(JamException.Code.INVALID, "Messages must be 1–" + MAX_CHAT_CHARS + " characters.");
+        }
         if (!chatLimiter.tryAcquire(jam.code() + ":" + sessionId).allowed()) {
             var limit = config.chatRateLimit();
             throw new JamException(JamException.Code.RATE_LIMITED, "Slow down — max " + limit.maxRequests()
                     + " messages every " + limit.window().toSeconds() + " seconds.");
-        }
-        String text = normalise(rawText);
-        if (text == null || text.isEmpty() || text.length() > MAX_CHAT_CHARS) {
-            throw new JamException(JamException.Code.INVALID, "Messages must be 1–" + MAX_CHAT_CHARS + " characters.");
         }
         var playlist = linkParser.findPlaylistInText(text);
         var message = new ChatMessage(UUID.randomUUID().toString(),

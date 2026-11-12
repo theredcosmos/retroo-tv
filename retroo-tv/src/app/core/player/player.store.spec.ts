@@ -25,6 +25,7 @@ class FakeYouTube {
   mount = async () => {};
   play() {}
   pause() {}
+  wantsPlaying() { return this.state() === 'playing'; }
   seekTo(_seconds: number) {}
   toggleMute() {}
 }
