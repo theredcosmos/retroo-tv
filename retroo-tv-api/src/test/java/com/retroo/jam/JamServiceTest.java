@@ -266,7 +266,8 @@ class JamServiceTest {
         assertThatThrownBy(() -> service.chat(code, "s1", "x".repeat(281)))
                 .extracting(e -> ((JamException) e).code()).isEqualTo(JamException.Code.INVALID);
 
-        for (int i = 0; i < 4; i++) {        // first attempt above counted too → 5 in the window
+        // The rejected message above is validated before the limiter, so it costs nothing: all 5 slots remain.
+        for (int i = 0; i < 5; i++) {
             service.chat(code, "s1", "msg " + i);
         }
         assertThatThrownBy(() -> service.chat(code, "s1", "spam"))
