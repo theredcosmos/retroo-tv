@@ -50,6 +50,8 @@ const DRIFT_S = 2;
 const ARRIVAL_MS = 900;
 /** Pressing "previous" after this many seconds restarts the song instead (like every music player). */
 const RESTART_THRESHOLD_S = 3;
+/** Shuffle preference for shared playlists, remembered per browser. */
+const SHUFFLE_KEY = 'retroo.shuffle';
 
 /**
  * Single source of truth for playback (a lightweight signal-based store — no NgRx needed at this size).
@@ -88,6 +90,11 @@ export class PlayerStore {
   readonly followMode = signal(false);
   /** Emits when *this* user seeks — the jam host forwards it to guests. */
   readonly seeked$ = new Subject<number>();
+  /**
+   * Shuffle for shared playlists: songs play in a random order, each once per pass (a fresh shuffle every pass,
+   * never repeating the song that just played). Off = the playlist's own order. Decade channels are always random.
+   */
+  readonly shuffle = signal(readShuffle());
 
   /** Latest host state (guests) and the server-clock offset it arrived with. */
   private latestRemote?: { state: PlaybackState; offsetMs: number };
@@ -104,6 +111,9 @@ export class PlayerStore {
   /** Most recent video ids, newest last. */
   private recent: string[] = [];
   private playlistIds: string[] = [];
+  /** Play order: indexes into playlistIds (identity when shuffle is off, a permutation when on). */
+  private playlistOrder: number[] = [];
+  /** Position in playlistOrder of the song on the TV. */
   private playlistIndex = 0;
   private arrivalTimer?: ReturnType<typeof setTimeout>;
 
@@ -288,9 +298,31 @@ export class PlayerStore {
     this.source.set({ kind: 'playlist', playlistId, name: p.playlistName, sharedBy: p.displayName, url: p.playlistUrl });
     this.history = [];
     this.playlistIds = ids;
+    this.playlistOrder = this.shuffle() ? shuffled(ids.length) : identity(ids.length);
     this.playlistIndex = 0;
     this.consecutiveSkips = 0;
-    await this.tuneTo(() => Promise.resolve(this.playlistSong(0)), 'channel');
+    await this.tuneTo(() => Promise.resolve(this.playlistSong(this.playlistOrder[0])), 'channel');
+  }
+
+  /**
+   * Turn playlist shuffle on/off. Takes effect from the next song — the one on the TV keeps playing:
+   * on → it stays first and the rest are shuffled after it; off → playback continues in playlist order from it.
+   */
+  toggleShuffle(): void {
+    if (this.followMode()) return;
+    const on = !this.shuffle();
+    this.shuffle.set(on);
+    writeShuffle(on);
+    const n = this.playlistIds.length;
+    if (!n) return;
+    const current = this.playlistOrder[this.playlistIndex] ?? 0;
+    if (on) {
+      this.playlistOrder = [current, ...shuffled(n).filter((i) => i !== current)];
+      this.playlistIndex = 0;
+    } else {
+      this.playlistOrder = identity(n);
+      this.playlistIndex = current;
+    }
   }
 
   /** Back to the decade shuffle (from playlist mode). */
@@ -400,8 +432,17 @@ export class PlayerStore {
 
   private playlistStep(delta: number): Song {
     const n = this.playlistIds.length;
-    this.playlistIndex = (((this.playlistIndex + delta) % n) + n) % n;
-    return this.playlistSong(this.playlistIndex);
+    if (this.shuffle() && delta > 0 && this.playlistIndex + 1 >= n && n > 1) {
+      // End of a shuffled pass: reshuffle for the next one, never starting with the song that just played.
+      const last = this.playlistOrder[this.playlistIndex];
+      const next = shuffled(n);
+      if (next[0] === last) [next[0], next[n - 1]] = [next[n - 1], next[0]];
+      this.playlistOrder = next;
+      this.playlistIndex = 0;
+    } else {
+      this.playlistIndex = (((this.playlistIndex + delta) % n) + n) % n;
+    }
+    return this.playlistSong(this.playlistOrder[this.playlistIndex]);
   }
 
   private playlistSong(index: number): Song {
@@ -445,6 +486,36 @@ export class PlayerStore {
     const err = e as Partial<ApiError>;
     this.status.set('error');
     this.errorMessage.set(err?.detail ?? 'No signal.');
+  }
+}
+
+/** 0..n-1 in a random order (Fisher–Yates). */
+function shuffled(n: number): number[] {
+  const a = identity(n);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function identity(n: number): number[] {
+  return Array.from({ length: n }, (_, i) => i);
+}
+
+function readShuffle(): boolean {
+  try {
+    return localStorage.getItem(SHUFFLE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeShuffle(on: boolean): void {
+  try {
+    localStorage.setItem(SHUFFLE_KEY, on ? '1' : '0');
+  } catch {
+    /* storage blocked — shuffle just won't be remembered */
   }
 }
 

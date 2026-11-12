@@ -82,6 +82,20 @@
         [attr.aria-label]="player.muted() ? 'Unmute' : 'Mute'"
         [attr.aria-pressed]="player.muted()"
       ></button>
+      <!-- Shuffle push-button with an indicator lamp (glows when shuffle is on). Works on any channel: it's the
+           preference for shared playlists, so the next playlist tuned in starts shuffled. -->
+      <button
+        type="button"
+        class="tv-shuffle"
+        [class.on]="player.shuffle()"
+        (click)="player.toggleShuffle()"
+        [disabled]="!player.canControl()"
+        [attr.aria-pressed]="player.shuffle()"
+        aria-label="Shuffle playlists"
+        title="Shuffle (S) — plays shared playlists in a random order"
+      >
+        <span class="lamp" aria-hidden="true"></span><span class="label" aria-hidden="true">SHUF</span>
+      </button>
       <span class="grille" aria-hidden="true"></span>
       <span class="led" [class.on]="player.status() === 'on'" aria-hidden="true"></span>
     </div>

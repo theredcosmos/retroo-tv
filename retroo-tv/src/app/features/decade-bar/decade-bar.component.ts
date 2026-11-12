@@ -20,6 +20,13 @@ import { DecadeSlug } from '../../core/models';
             <span class="pl-name">{{ src.name }}</span>
             <span class="by">shared by {{ src.sharedBy }}</span>
             @if (player.canControl()) {
+              <button type="button" class="shuffle" [class.on]="player.shuffle()" (click)="player.toggleShuffle()"
+                      [attr.aria-pressed]="player.shuffle()" title="Shuffle this playlist (S)">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M16 4h4v4M4 20 20 4M20 16v4h-4M14.5 14.5 20 20M4 4l5 5" />
+                </svg>
+                Shuffle
+              </button>
               <button type="button" class="back" (click)="player.leavePlaylist()">Back to decades</button>
             }
           </div>
@@ -84,8 +91,17 @@ import { DecadeSlug } from '../../core/models';
     }
     .pl-name { font: 400 17px/1.1 var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .by { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
+    .shuffle {
+      margin-left: auto; display: inline-flex; align-items: center; gap: 5px; flex: none;
+      height: 24px; padding: 0 10px; border: var(--hairline); border-radius: var(--radius-pill);
+      background: transparent; color: var(--ink-dim); font-size: 11px; cursor: pointer;
+      transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+      svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      &:hover { color: var(--ink); background: var(--hover); }
+      &.on { background: var(--ink); color: var(--page-bg); border-color: transparent; }
+    }
     .back {
-      margin-left: auto; border: 0; background: none; font-size: 11px; color: var(--ink-dim);
+      flex: none; border: 0; background: none; font-size: 11px; color: var(--ink-dim);
       text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
       &:hover { color: var(--ink); }
     }

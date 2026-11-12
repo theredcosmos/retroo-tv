@@ -51,7 +51,7 @@ export class App {
   private readonly player = inject(PlayerStore);
   private readonly theme = inject(ThemeService);
 
-  /** Space = play/pause · N = next · P = previous · M = mute · T = next theme · 1–7 = decades. */
+  /** Space = play/pause · N = next · P = previous · M = mute · S = shuffle playlist · T = next theme · 1–7 = decades. */
   @HostListener('document:keydown', ['$event'])
   onKey(e: KeyboardEvent): void {
     const target = e.target as HTMLElement | null;
@@ -68,6 +68,8 @@ export class App {
       void this.player.previous();
     } else if (key === 'm') {
       this.player.toggleMute();
+    } else if (key === 's') {
+      this.player.toggleShuffle();
     } else if (key === 't') {
       this.theme.cycle();
     } else if (/^[1-7]$/.test(key)) {
