@@ -12,18 +12,29 @@
   z-index: 1;
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(200px, 280px);
+  /* Side columns kept lean: the TV is the subject and gets the width. */
+  grid-template-columns: minmax(190px, 250px) minmax(0, 1fr) minmax(190px, 250px);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
     'header header   header'
     'feed   tv       .'
-    'feed   controls .';
+    'feed   controls theme';
   column-gap: var(--gutter);
   padding: var(--gutter);
   padding-bottom: calc(var(--gutter) * 0.8);
 }
 
 .stage-header { grid-area: header; }
+
+/* Scene picker in the otherwise empty bottom-right corner; its menu opens upward. */
+.stage-theme {
+  grid-area: theme;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  position: relative;
+  z-index: 3;
+}
 
 .stage-feed {
   grid-area: feed;
@@ -57,7 +68,7 @@
   .stage {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto auto;
-    grid-template-areas: 'header' 'tv' 'controls' 'feed';
+    grid-template-areas: 'header' 'tv' 'controls' 'feed' 'theme';
     row-gap: 16px;
   }
 

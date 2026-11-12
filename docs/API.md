@@ -133,6 +133,18 @@ Notes: `playback` is `null` until the host loads the first song. **SYSTEM messag
 ### `DELETE /api/jams/{code}` (header `X-Jam-Token`)
 `204` — everyone receives `ENDED {HOST_ENDED}` · `403` · `404`.
 
+### Open & private jams
+`POST /api/jams` takes an optional `"visibility": "OPEN" | "PRIVATE"` (default `OPEN`); the response adds
+`inviteToken` (host-only). JamSummary / JamSnapshot carry `visibility`; JamSnapshot also has `locked`.
+
+- **Private jams are not listed** by `GET /api/jams`.
+- `GET /api/jams/{code}` with header `X-Jam-Key` (invite token, a guest's pass, or the host token). A private jam
+  without a valid key returns `200` with `"locked": true` and empty `members` / `chat`, `playback: null`.
+- `POST /api/jams/{code}/visibility` `{"visibility": "PRIVATE"}` (header `X-Jam-Token`) → JamSnapshot. Going `OPEN`
+  admits everyone waiting. `403` not the host.
+- `GET /api/jams/{code}/invite` (header `X-Jam-Token`) → `{"inviteToken": "…"}`; `POST` the same path rotates it
+  (old links stop working; people already in and their passes stay). Invite link: `/jam/{code}#k={inviteToken}`.
+
 ## Health
 `GET /actuator/health` · `/actuator/health/liveness` · `/actuator/health/readiness`
 
@@ -153,6 +165,14 @@ Endpoint: `ws(s)://<host>/ws` (no SockJS). Heart-beats: client 10 s/10 s.
 | `SEND` | `/app/jam/{code}/leave` | `{}` |
 | `SEND` | `/app/jam/{code}/chat` | `{"text": "this one! https://music.youtube.com/playlist?list=PL123"}` (1–280 chars, 5 per 10 s) |
 | `SEND` | `/app/jam/{code}/control` | host only — see below |
+| `SUBSCRIBE` | `/user/queue/jam-access` | answer to a join request, this connection only: `{"type": "APPROVED", "code", "pass", "jam": JamSnapshot}` or `{"type": "DECLINED", "code"}` |
+| `SEND` | `/app/jam/{code}/request` | `{"name": "Riya"}` — ask to join a private jam (max 20 waiting; `leave`/disconnect withdraws) |
+| `SEND` | `/app/jam/{code}/admit` | host only: `{"hostToken": "…", "requestId": "…", "allow": true}` |
+
+**Private jams:** SUBSCRIBE to `/topic/jam/{code}` must carry a `jam-key` header (invite token, pass or host token)
+unless the session is already a member — otherwise the subscription is silently dropped (no ERROR frame, the socket
+stays up). `join` takes `"key"` the same way and is refused with `FORBIDDEN` without one. Extra events: `REQUESTS`
+`{"requests": [{"id", "name"}]}` (pending join requests) and `VISIBILITY` `{"visibility": "OPEN" | "PRIVATE"}`.
 
 Frames from one connection are processed in order, so a client can SUBSCRIBE to `/topic/jam/{code}` and SEND
 `join` straight after.

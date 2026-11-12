@@ -13,6 +13,7 @@ import { RoomComponent } from './features/room/room.component';
 import { JamDrawerComponent } from './features/jam/jam-drawer.component';
 import { AmbientComponent } from './features/ambient/ambient.component';
 import { FilmGrainComponent } from './features/ambient/film-grain.component';
+import { ThemePickerComponent } from './features/header/theme-picker.component';
 
 const DECADE_KEYS: DecadeSlug[] = ['60s', '70s', '80s', '90s', '2000s', '2010s', 'now'];
 
@@ -24,7 +25,7 @@ const DECADE_KEYS: DecadeSlug[] = ['60s', '70s', '80s', '90s', '2000s', '2010s',
  *   ┌ header: listeners · RETROO TV · YT Music link ┐
  *   │ feed (left)        CRT TV (centre)             │
  *   │                    decade bar                  │
- *   └                    now-playing bar             ┘
+ *   └                    now-playing bar     scenes ▲┘
  */
 @Component({
   selector: 'app-root',
@@ -41,6 +42,7 @@ const DECADE_KEYS: DecadeSlug[] = ['60s', '70s', '80s', '90s', '2000s', '2010s',
     JamDrawerComponent,
     AmbientComponent,
     FilmGrainComponent,
+    ThemePickerComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
@@ -49,10 +51,11 @@ export class App {
   private readonly player = inject(PlayerStore);
   private readonly theme = inject(ThemeService);
 
-  /** Space = play/pause · N = next · P = previous · M = mute · T = next theme · 1–7 = decades. */
+  /** Space = play/pause · N = next · P = previous · M = mute · S = shuffle playlist · T = next theme · 1–7 = decades. */
   @HostListener('document:keydown', ['$event'])
   onKey(e: KeyboardEvent): void {
-    const target = e.target as HTMLElement | null;
+    // Key events can target the document itself (extensions, synthetic events): only Elements have closest().
+    const target = e.target instanceof Element ? e.target : null;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (target?.closest('input, textarea, select, dialog, [contenteditable="true"]')) return;
 
@@ -66,6 +69,8 @@ export class App {
       void this.player.previous();
     } else if (key === 'm') {
       this.player.toggleMute();
+    } else if (key === 's') {
+      this.player.toggleShuffle();
     } else if (key === 't') {
       this.theme.cycle();
     } else if (/^[1-7]$/.test(key)) {

@@ -30,7 +30,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -266,7 +268,8 @@ class JamServiceTest {
         assertThatThrownBy(() -> service.chat(code, "s1", "x".repeat(281)))
                 .extracting(e -> ((JamException) e).code()).isEqualTo(JamException.Code.INVALID);
 
-        for (int i = 0; i < 4; i++) {        // first attempt above counted too → 5 in the window
+        // The rejected message above is validated before the limiter, so it costs nothing: all 5 slots remain.
+        for (int i = 0; i < 5; i++) {
             service.chat(code, "s1", "msg " + i);
         }
         assertThatThrownBy(() -> service.chat(code, "s1", "spam"))
@@ -333,5 +336,130 @@ class JamServiceTest {
                 new ControlMessage(created.hostToken(), ControlAction.LOAD, bad, 0.0)))
                 .extracting(e -> ((JamException) e).code()).isEqualTo(JamException.Code.INVALID);
         verify(messaging, org.mockito.Mockito.never()).convertAndSend(anyString(), (Object) any(PlaybackState.class));
+    }
+
+    // ---- private jams (gemini.md §8.5) -----------------------------------------------------------------
+
+    private JamModels.CreateJamResponse createPrivate() {
+        return service.create(new CreateJamRequest("Secret jam", "Omkar", JamModels.Visibility.PRIVATE), "1.2.3.4");
+    }
+
+    /** Personal messages sent to one session on /user/queue/jam-access. */
+    private List<JamModels.AccessMessage> accessSentTo(String sessionId) {
+        var captor = ArgumentCaptor.forClass(Object.class);
+        verify(messaging, atLeast(0)).convertAndSendToUser(eq(sessionId), eq(JamService.ACCESS_QUEUE),
+                captor.capture(), anyMap());
+        return captor.getAllValues().stream().map(JamModels.AccessMessage.class::cast).toList();
+    }
+
+    private List<JamModels.JoinRequest> lastRequests() {
+        return events().stream().filter(e -> e.type() == JamModels.EventType.REQUESTS)
+                .map(e -> ((JamModels.RequestsPayload) e.payload()).requests())
+                .reduce((a, b) -> b).orElse(List.of());
+    }
+
+    @Test
+    void privateJamIsUnlistedLockedAndClosedWithoutAKey() {
+        var created = createPrivate();
+        String code = created.jam().code();
+        service.join(code, "host-s", null, created.hostToken());
+        service.chat(code, "host-s", "secret plans");
+
+        assertThat(service.list()).isEmpty();                              // never in the lobby
+        var locked = service.snapshot(code, null);
+        assertThat(locked.locked()).isTrue();
+        assertThat(locked.chat()).isEmpty();                               // nothing from inside leaks
+        assertThat(locked.members()).isEmpty();
+        assertThat(locked.playback()).isNull();
+        assertThat(service.snapshot(code, "wrong-key").locked()).isTrue();
+        assertThat(service.snapshot(code, created.inviteToken()).chat()).isNotEmpty();
+
+        assertThatThrownBy(() -> service.join(code, "s2", "Riya", null))
+                .extracting(e -> ((JamException) e).code()).isEqualTo(JamException.Code.FORBIDDEN);
+        assertThat(service.maySubscribe(code, "s2", null)).isFalse();      // can't listen in either
+        assertThat(service.maySubscribe(code, "s2", created.inviteToken())).isTrue();
+
+        service.join(code, "s2", "Riya", null, created.inviteToken());     // the invite link works
+        assertThat(service.snapshot(code, created.inviteToken()).members()).containsExactly("Omkar", "Riya");
+        assertThat(service.maySubscribe(code, "s2", null)).isTrue();       // members may resubscribe
+    }
+
+    @Test
+    void hostLetsARequesterInWithAPersonalPass() {
+        var created = createPrivate();
+        String code = created.jam().code();
+
+        service.requestAccess(code, "s2", "Riya");
+        var requests = lastRequests();
+        assertThat(requests).extracting(JamModels.JoinRequest::name).containsExactly("Riya");
+        assertThat(requests.get(0).id()).isNotEqualTo("s2");              // session ids never leak
+
+        service.admit(code, new JamModels.AdmitMessage(created.hostToken(), requests.get(0).id(), true));
+        var answer = accessSentTo("s2");
+        assertThat(answer).hasSize(1);
+        assertThat(answer.get(0).type()).isEqualTo(JamModels.AccessType.APPROVED);
+        assertThat(answer.get(0).jam().locked()).isFalse();
+        assertThat(lastRequests()).isEmpty();
+
+        String pass = answer.get(0).pass();
+        service.join(code, "s2", "Riya", null, pass);
+        assertThat(service.snapshot(code, pass).members()).containsExactly("Riya");
+    }
+
+    @Test
+    void declinedRequesterIsToldAndCannotJoin() {
+        var created = createPrivate();
+        String code = created.jam().code();
+        service.requestAccess(code, "s3", "Kabir");
+
+        assertThatThrownBy(() -> service.admit(code,
+                new JamModels.AdmitMessage("not-the-host", lastRequests().get(0).id(), true)))
+                .extracting(e -> ((JamException) e).code()).isEqualTo(JamException.Code.FORBIDDEN);
+
+        service.admit(code, new JamModels.AdmitMessage(created.hostToken(), lastRequests().get(0).id(), false));
+        assertThat(accessSentTo("s3")).extracting(JamModels.AccessMessage::type)
+                .containsExactly(JamModels.AccessType.DECLINED);
+        assertThatThrownBy(() -> service.join(code, "s3", "Kabir", null))
+                .extracting(e -> ((JamException) e).code()).isEqualTo(JamException.Code.FORBIDDEN);
+    }
+
+    @Test
+    void newInviteLinkKillsTheOldOneButKeepsPasses() {
+        var created = createPrivate();
+        String code = created.jam().code();
+        service.requestAccess(code, "s2", "Riya");
+        service.admit(code, new JamModels.AdmitMessage(created.hostToken(), lastRequests().get(0).id(), true));
+        String pass = accessSentTo("s2").get(0).pass();
+
+        assertThatThrownBy(() -> service.rotateInvite(code, "nope")).isInstanceOf(ApiException.Forbidden.class);
+        String fresh = service.rotateInvite(code, created.hostToken()).inviteToken();
+
+        assertThat(fresh).isNotEqualTo(created.inviteToken());
+        assertThat(service.invite(code, created.hostToken()).inviteToken()).isEqualTo(fresh);
+        assertThat(service.snapshot(code, created.inviteToken()).locked()).isTrue(); // old link: dead
+        assertThat(service.snapshot(code, fresh).locked()).isFalse();
+        assertThat(service.snapshot(code, pass).locked()).isFalse();                  // let-in guests stay in
+    }
+
+    @Test
+    void openingTheJamAdmitsEveryoneWaitingAndLeavingWithdrawsARequest() {
+        var created = createPrivate();
+        String code = created.jam().code();
+        service.requestAccess(code, "s2", "Riya");
+        service.requestAccess(code, "s3", "Kabir");
+        service.leaveAll("s3");                                            // tab closed while waiting
+        assertThat(lastRequests()).extracting(JamModels.JoinRequest::name).containsExactly("Riya");
+
+        assertThatThrownBy(() -> service.setVisibility(code, "nope", JamModels.Visibility.OPEN))
+                .isInstanceOf(ApiException.Forbidden.class);
+        var snapshot = service.setVisibility(code, created.hostToken(), JamModels.Visibility.OPEN);
+
+        assertThat(snapshot.visibility()).isEqualTo(JamModels.Visibility.OPEN);
+        assertThat(accessSentTo("s2")).extracting(JamModels.AccessMessage::type)
+                .containsExactly(JamModels.AccessType.APPROVED);
+        assertThat(accessSentTo("s3")).isEmpty();
+        assertThat(service.list()).extracting(JamModels.JamSummary::code).containsExactly(code);
+        assertThat(events()).extracting(JamEvent::type).contains(JamModels.EventType.VISIBILITY);
+        service.join(code, "s4", "Meera", null);                           // open again: no key needed
     }
 }

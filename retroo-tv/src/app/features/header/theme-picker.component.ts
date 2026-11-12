@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, ElementRef, HostListener, inject, s
 import { ThemeService, ThemeId } from '../../core/ui/theme.service';
 
 /**
- * Scene picker: a quiet "Scene" button opening a menu grouped into Rooms and Minimal. WAI-ARIA menu-button
+ * Scene picker: a quiet "Scene" button in the bottom-right corner of the stage, opening a menu (upward, since it
+ * sits at the bottom) grouped into Rooms and Minimal. WAI-ARIA menu-button
  * pattern with `menuitemradio` items; closes on selection, Escape or an outside click. `T` cycles globally.
  */
 @Component({
@@ -48,7 +49,8 @@ import { ThemeService, ThemeId } from '../../core/ui/theme.service';
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
     }
     .menu {
-      position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: 250px;
+      position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 30; width: 250px;
+      max-height: calc(100dvh - 120px); overflow-y: auto; transform-origin: bottom right;
       display: grid; gap: 1px; padding: 8px; border-radius: 16px;
       background: var(--glass-strong); border: var(--hairline);
       backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
@@ -65,7 +67,7 @@ import { ThemeService, ThemeId } from '../../core/ui/theme.service';
     .text { display: grid; }
     .label { font-size: 13px; font-weight: 500; }
     small { font-size: 11px; color: var(--ink-faint); }
-    @keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
+    @keyframes drop { from { opacity: 0; transform: translateY(4px); } }
     @media (max-width: 600px) { .name { display: none; } }
   `,
 })

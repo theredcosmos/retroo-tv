@@ -189,7 +189,8 @@ A theme bundles three things:
   times and codes. **Chrome**: hairline borders (`--line`), soft glass, ink-filled primary buttons, one easing curve.
 * **Motion**: no blinking/buzzing; CRT power-on line on first tune-in, calmer roll/flicker, picture "settles" on arrival.
 * **Themes** (`src/themes.scss`): token groups UI / Room / TV / Picture. Rooms: living, rural, city, villa, midnight, neon.
-  Minimal: studio, ivory (light — ink flips dark), noir (grayscale video).
+  Minimal: studio, noir (grayscale video). The old light `ivory` theme was merged into `villa` ("Ivory Villa":
+  creamy beige, the only light theme — ink flips dark; larger walnut cabinet TV); a stored `ivory` choice migrates.
 * **Jams in a drawer** (`JamDrawerComponent`, `inert` when closed) keep the main view minimal.
 
 ### Playlist mode (listener channels)

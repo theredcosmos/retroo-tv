@@ -96,3 +96,13 @@ textarea {
 footer { display: flex; justify-content: flex-end; gap: 8px; }
 
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+
+  input { width: 16px; height: 16px; padding: 0; accent-color: var(--accent); }
+  > span { font-size: 13px; color: var(--ink); }
+}

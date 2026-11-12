@@ -3,7 +3,9 @@ package com.retroo.jam;
 import com.retroo.jam.JamModels.ChatMessage;
 import com.retroo.jam.JamModels.JamSnapshot;
 import com.retroo.jam.JamModels.JamSummary;
+import com.retroo.jam.JamModels.JoinRequest;
 import com.retroo.jam.JamModels.PlaybackState;
+import com.retroo.jam.JamModels.Visibility;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -12,9 +14,11 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * One live jam, held only in memory.
@@ -43,12 +47,26 @@ final class JamSession {
     private final Map<String, String> members = new LinkedHashMap<>();
     private final Deque<ChatMessage> chat = new ArrayDeque<>();
 
-    JamSession(String code, String name, String hostName, String hostToken, Instant createdAt, Duration ttl,
-               int chatHistory) {
+    // ---- private jams (gemini.md §8.5) ----
+    private Visibility visibility;
+    /** Secret part of the private invite link; rotating it kills old links. */
+    private byte[] inviteToken;
+    /** Personal passes handed to guests the host let in (survive invite rotation). */
+    private final Set<String> passes = new HashSet<>();
+    /** Pending "let me in" requests: request id → (session id, name). Insertion order = arrival order. */
+    private final Map<String, Pending> pending = new LinkedHashMap<>();
+
+    record Pending(String sessionId, String name) {
+    }
+
+    JamSession(String code, String name, String hostName, String hostToken, String inviteToken,
+               Visibility visibility, Instant createdAt, Duration ttl, int chatHistory) {
         this.code = code;
         this.name = name;
         this.hostName = hostName;
         this.hostToken = hostToken.getBytes(StandardCharsets.UTF_8);
+        this.inviteToken = inviteToken.getBytes(StandardCharsets.UTF_8);
+        this.visibility = visibility;
         this.createdAt = createdAt;
         this.expiresAt = createdAt.plus(ttl);
         this.chatHistory = chatHistory;
@@ -61,6 +79,88 @@ final class JamSession {
     /** Constant-time comparison: response timing must not reveal how many leading characters were right. */
     boolean isHost(String token) {
         return token != null && MessageDigest.isEqual(hostToken, token.getBytes(StandardCharsets.UTF_8));
+    }
+
+    // ---- visibility & access ----------------------------------------------------------------------------
+
+    synchronized Visibility visibility() {
+        return visibility;
+    }
+
+    synchronized boolean isPrivate() {
+        return visibility == Visibility.PRIVATE;
+    }
+
+    synchronized void setVisibility(Visibility v) {
+        this.visibility = v;
+    }
+
+    synchronized String inviteToken() {
+        return new String(inviteToken, StandardCharsets.UTF_8);
+    }
+
+    synchronized void setInviteToken(String token) {
+        this.inviteToken = token.getBytes(StandardCharsets.UTF_8);
+    }
+
+    synchronized void addPass(String pass) {
+        passes.add(pass);
+    }
+
+    /**
+     * Whether {@code key} opens this jam: the host token, the current invite token (constant-time compares) or a
+     * personal pass (random 128-bit values, so a set lookup leaks nothing useful).
+     */
+    synchronized boolean acceptsKey(String key) {
+        if (key == null || key.isEmpty()) {
+            return false;
+        }
+        return isHost(key) || MessageDigest.isEqual(inviteToken, key.getBytes(StandardCharsets.UTF_8))
+                || passes.contains(key);
+    }
+
+    /** May this session see the jam's live channel / snapshot? Open jams: anyone. Private: members or a valid key. */
+    synchronized boolean mayEnter(String sessionId, String key) {
+        return visibility == Visibility.OPEN || (sessionId != null && members.containsKey(sessionId))
+                || acceptsKey(key);
+    }
+
+    /**
+     * Records a request to join. One per session (asking again just updates the name).
+     * @return the request id, or null if the waiting list is full.
+     */
+    synchronized String addRequest(String requestId, String sessionId, String displayName, int maxPending) {
+        for (var e : pending.entrySet()) {
+            if (e.getValue().sessionId().equals(sessionId)) {
+                e.setValue(new Pending(sessionId, displayName));
+                return e.getKey();
+            }
+        }
+        if (pending.size() >= maxPending) {
+            return null;
+        }
+        pending.put(requestId, new Pending(sessionId, displayName));
+        return requestId;
+    }
+
+    synchronized Pending takeRequest(String requestId) {
+        return requestId == null ? null : pending.remove(requestId);
+    }
+
+    /** @return true if that session had a pending request (now withdrawn). */
+    synchronized boolean withdrawRequests(String sessionId) {
+        return pending.values().removeIf(p -> p.sessionId().equals(sessionId));
+    }
+
+    /** Removes and returns every pending request (used when the jam turns open: everyone waiting is let in). */
+    synchronized List<Pending> takeAllRequests() {
+        List<Pending> all = List.copyOf(pending.values());
+        pending.clear();
+        return all;
+    }
+
+    synchronized List<JoinRequest> requests() {
+        return pending.entrySet().stream().map(e -> new JoinRequest(e.getKey(), e.getValue().name())).toList();
     }
 
     // ---- lifetime ---------------------------------------------------------------------------------------
@@ -154,12 +254,18 @@ final class JamSession {
     // ---- views ------------------------------------------------------------------------------------------
 
     synchronized JamSummary summary() {
-        return new JamSummary(code, name, hostName, members.size(), createdAt, expiresAt);
+        return new JamSummary(code, name, hostName, members.size(), createdAt, expiresAt, visibility);
     }
 
     synchronized JamSnapshot snapshot(int chatLimit, long serverTime) {
         return new JamSnapshot(code, name, hostName, members.size(), createdAt, expiresAt, extended,
-                List.copyOf(members.values()), playback, recentChat(chatLimit), serverTime);
+                List.copyOf(members.values()), playback, recentChat(chatLimit), serverTime, visibility, false);
+    }
+
+    /** What an outsider may see of a private jam: who and what it is, nothing from inside. */
+    synchronized JamSnapshot lockedSnapshot(long serverTime) {
+        return new JamSnapshot(code, name, hostName, members.size(), createdAt, expiresAt, extended,
+                List.of(), null, List.of(), serverTime, visibility, true);
     }
 
     Instant createdAt() {
