@@ -13,6 +13,7 @@ import { RoomComponent } from './features/room/room.component';
 import { JamDrawerComponent } from './features/jam/jam-drawer.component';
 import { AmbientComponent } from './features/ambient/ambient.component';
 import { FilmGrainComponent } from './features/ambient/film-grain.component';
+import { ThemePickerComponent } from './features/header/theme-picker.component';
 
 const DECADE_KEYS: DecadeSlug[] = ['60s', '70s', '80s', '90s', '2000s', '2010s', 'now'];
 
@@ -24,7 +25,7 @@ const DECADE_KEYS: DecadeSlug[] = ['60s', '70s', '80s', '90s', '2000s', '2010s',
  *   ┌ header: listeners · RETROO TV · YT Music link ┐
  *   │ feed (left)        CRT TV (centre)             │
  *   │                    decade bar                  │
- *   └                    now-playing bar             ┘
+ *   └                    now-playing bar     scenes ▲┘
  */
 @Component({
   selector: 'app-root',
@@ -41,6 +42,7 @@ const DECADE_KEYS: DecadeSlug[] = ['60s', '70s', '80s', '90s', '2000s', '2010s',
     JamDrawerComponent,
     AmbientComponent,
     FilmGrainComponent,
+    ThemePickerComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',

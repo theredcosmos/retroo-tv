@@ -4,8 +4,8 @@ import { JamStore } from '../../core/jam/jam.store';
 import { PlayerStore } from '../../core/player/player.store';
 import { SharedPlaylist } from '../../core/models';
 
-/** How long each playlist stays in the spotlight before fading to the next. */
-const DWELL_MS = 7_000;
+/** How long each playlist stays in the spotlight before fading to the next (the progress line fills over this). */
+const DWELL_MS = 11_000;
 
 /**
  * "Listener channels": playlists other visitors shared, shown **one at a time** in a spotlight that fades to the
@@ -20,6 +20,8 @@ const DWELL_MS = 7_000;
  *  - The entrance fade lives on an inner element, so a card stepped to with ‹ › (while the pointer is on the
  *    arrows, i.e. paused) still fades in.
  *  - A newly shared playlist jumps the queue and shows next (with the "fresh" highlight).
+ *  - No visible "3 / 17" counter: new shares keep arriving, so a number would keep ticking up under the reader.
+ *    Just ‹ ›; screen readers still get "n of total" on the card.
  *  - prefers-reduced-motion: no auto-rotation and no fades; ‹ › still step through.
  * Screen readers: the card is a live region only after the user steps — auto-rotation stays silent.
  */
@@ -32,7 +34,6 @@ const DWELL_MS = 7_000;
       @if (count() > 1) {
         <div class="nav">
           <button type="button" class="arrow" (click)="step(-1)" aria-label="Previous playlist">‹</button>
-          <span class="counter" aria-hidden="true">{{ position() }} / {{ count() }}</span>
           <button type="button" class="arrow" (click)="step(1)" aria-label="Next playlist">›</button>
         </div>
       }
@@ -76,7 +77,6 @@ const DWELL_MS = 7_000;
     :host { display: flex; flex-direction: column; gap: 10px; min-height: 0; text-shadow: var(--text-shadow); }
     .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .nav { display: flex; align-items: center; gap: 2px; font-size: 11px; color: var(--ink-faint); }
-    .counter { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
     .arrow {
       width: 24px; height: 24px; border: 0; border-radius: 50%; background: none; color: var(--ink-dim);
       font-size: 16px; line-height: 1; cursor: pointer; text-shadow: inherit;
