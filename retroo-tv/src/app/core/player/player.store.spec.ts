@@ -23,8 +23,10 @@ class FakeYouTube {
   load = async (id: string) => void this.loaded.push(id);
   cue = async () => {};
   mount = async () => {};
+  playlistIds = async () => ['pl_a', 'pl_b', 'pl_c', 'pl_d', 'pl_e'];
   play() {}
   pause() {}
+  wantsPlaying() { return this.state() === 'playing'; }
   seekTo(_seconds: number) {}
   toggleMute() {}
 }
@@ -35,6 +37,7 @@ describe('PlayerStore', () => {
   let api: jasmine.SpyObj<RetrooApi>;
 
   beforeEach(() => {
+    localStorage.removeItem('retroo.shuffle');
     api = jasmine.createSpyObj<RetrooApi>('RetrooApi', ['randomSong', 'decades']);
     TestBed.configureTestingModule({
       providers: [
@@ -100,6 +103,53 @@ describe('PlayerStore', () => {
     tick(SIGNAL_LOSS_MS - CHANNEL_STATIC_MS);
     expect(yt.loaded).toEqual(['first000000', 'second00000']);
   }));
+
+  describe('shared playlist shuffle', () => {
+    const playlist = {
+      id: 1, displayName: 'Riya', playlistName: 'Test', createdAt: '',
+      playlistUrl: 'https://music.youtube.com/playlist?list=PLtest',
+    };
+    afterEach(() => localStorage.removeItem('retroo.shuffle'));
+
+    it('plays every song once per shuffled pass and never repeats across the pass boundary', fakeAsync(() => {
+      store.toggleShuffle(); // on before tuning in → the whole playlist starts shuffled
+      store.playPlaylist(playlist);
+      tick(CHANNEL_STATIC_MS + 100);
+      for (let i = 0; i < 5; i++) {
+        store.next();
+        tick(CHANNEL_STATIC_MS + 100);
+      }
+      const firstPass = yt.loaded.slice(0, 5);
+      expect([...firstPass].sort()).toEqual(['pl_a', 'pl_b', 'pl_c', 'pl_d', 'pl_e']);
+      expect(yt.loaded[5]).not.toBe(yt.loaded[4]); // the new pass doesn't open with the song that just played
+    }));
+
+    it('turning shuffle on mid-playlist keeps the current song and still covers the rest', fakeAsync(() => {
+      store.playPlaylist(playlist);
+      tick(CHANNEL_STATIC_MS + 100);
+      expect(yt.loaded).toEqual(['pl_a']); // shuffle off → playlist order
+      store.toggleShuffle();
+      expect(store.shuffle()).toBeTrue();
+      expect(yt.loaded).toEqual(['pl_a']); // nothing reloads on toggle
+      for (let i = 0; i < 4; i++) {
+        store.next();
+        tick(CHANNEL_STATIC_MS + 100);
+      }
+      expect([...yt.loaded].sort()).toEqual(['pl_a', 'pl_b', 'pl_c', 'pl_d', 'pl_e']);
+    }));
+
+    it('turning shuffle off continues in playlist order from the current song', fakeAsync(() => {
+      store.toggleShuffle();
+      store.playPlaylist(playlist);
+      tick(CHANNEL_STATIC_MS + 100);
+      const current = yt.loaded[0];
+      store.toggleShuffle(); // off
+      store.next();
+      tick(CHANNEL_STATIC_MS + 100);
+      const ids = ['pl_a', 'pl_b', 'pl_c', 'pl_d', 'pl_e'];
+      expect(yt.loaded[1]).toBe(ids[(ids.indexOf(current) + 1) % ids.length]);
+    }));
+  });
 
   describe('jam guest (follow mode)', () => {
     it('ignores local intents while following the host', fakeAsync(() => {

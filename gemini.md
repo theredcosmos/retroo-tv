@@ -175,6 +175,24 @@ Errors (all endpoints) → `application/problem+json`:
 - `EXTENDED` → JamSnapshot · `ENDING_SOON` → `{ "expiresAt": "…" }` · `ENDED` → `{ "reason": "EXPIRED" | "HOST_ENDED" }`
 - Join/leave also emit a `SYSTEM` chat message ("Riya joined").
 
+### 8.5 Open & private jams
+- `visibility`: `OPEN` (default) | `PRIVATE`, chosen at create (`POST /api/jams` body `"visibility"`), toggled by the
+  host any time. Private jams are **not listed** in `GET /api/jams`.
+- **Keys.** A private jam accepts any of: the `hostToken`; its **invite token** (16 random bytes, base64url, sent only
+  to the host: in `CreateJamResponse.inviteToken` and `GET|POST /api/jams/{code}/invite`); or a personal **pass**
+  (16 random bytes) issued to a guest the host let in. Invite link = `/jam/{code}#k={inviteToken}` (fragment: never
+  sent to servers or logged). `POST /invite` rotates the token: old links stop working, members and passes stay.
+- **Gate (server-enforced).** For a private jam without a valid key (or existing membership):
+  `GET /api/jams/{code}` (header `X-Jam-Key`) returns a **locked** snapshot (`"locked": true`, no members / chat /
+  playback); STOMP SUBSCRIBE to `/topic/jam/{code}` (header `jam-key`) is dropped; `join` → `FORBIDDEN`.
+- **Ask to join.** Client SUBSCRIBEs `/user/queue/jam-access`, SENDs `/app/jam/{code}/request` `{ "name" }`. Host sees
+  `REQUESTS` events `{ "requests": [{ "id", "name" }] }` and SENDs `/app/jam/{code}/admit`
+  `{ "hostToken", "requestId", "allow" }`. The requester gets `{ "type": "APPROVED", "code", "pass", "jam": JamSnapshot }`
+  or `{ "type": "DECLINED", "code" }`, then subscribes/joins with the pass as its key. Max 20 pending per jam;
+  `leave`/disconnect withdraws a request. Switching to `OPEN` admits everyone waiting.
+- REST: `POST /api/jams/{code}/visibility` `{ "visibility" }` (host) → JamSnapshot; emits `VISIBILITY`
+  `{ "visibility" }` + a SYSTEM chat line. JamSummary/JamSnapshot gain `visibility`; JamSnapshot gains `locked`.
+
 ### 8.4 Client sync (guests)
 `offset = serverTime − Date.now()` on every event; expected position = `positionSec + (playing ? (Date.now() + offset − updatedAt) / 1000 : 0)`.
 On STATE: load the song if different (with channel static), seek if drift > 2 s, then play/pause to match.

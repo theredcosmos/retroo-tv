@@ -44,12 +44,26 @@ class JamWebSocketTest {
         final BlockingQueue<Map<String, Object>> errors = new LinkedBlockingQueue<>();
 
         Client(String code) throws Exception {
+            this(code, null);
+        }
+
+        /** {@code key} goes in the SUBSCRIBE frame's {@code jam-key} header (private jams). */
+        Client(String code, String key) throws Exception {
             var stomp = new WebSocketStompClient(new StandardWebSocketClient());
             stomp.setMessageConverter(new MappingJackson2MessageConverter());
             session = stomp.connectAsync("ws://localhost:" + port + "/ws", new StompSessionHandlerAdapter() {
             }).get(5, TimeUnit.SECONDS);
-            session.subscribe("/topic/jam/" + code, collector(events));
+            subscribeJam(code, key, events);
             session.subscribe("/user/queue/jam-errors", collector(errors));
+        }
+
+        void subscribeJam(String code, String key, BlockingQueue<Map<String, Object>> sink) {
+            var headers = new StompHeaders();
+            headers.setDestination("/topic/jam/" + code);
+            if (key != null) {
+                headers.add("jam-key", key);
+            }
+            session.subscribe(headers, collector(sink));
         }
 
         Map<String, Object> await(BlockingQueue<Map<String, Object>> q, Predicate<Map<String, Object>> match)
@@ -141,6 +155,61 @@ class JamWebSocketTest {
         guest.session.disconnect();
         assertThat(host.await(host.events, e -> type("MEMBERS").test(e)
                 && ((Number) payload(e).get("memberCount")).intValue() == 1)).isNotNull();
+        host.session.disconnect();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void privateJamCannotBeOverheardAndAdmitsViaRequest() throws Exception {
+        var created = rest.postForObject("/api/jams",
+                Map.of("name", "Secret socket jam", "hostName", "Omkar", "visibility", "PRIVATE"), Map.class);
+        String code = (String) ((Map<String, Object>) created.get("jam")).get("code");
+        String token = (String) created.get("hostToken");
+
+        Client host = new Client(code, token);
+        host.session.send("/app/jam/" + code + "/join", Map.of("name", "ignored", "hostToken", token));
+        assertThat(host.await(host.events, type("MEMBERS"))).isNotNull();
+
+        // An outsider who only knows the code subscribes without a key: the server drops that subscription …
+        Client outsider = new Client(code, null);
+        BlockingQueue<Map<String, Object>> access = new LinkedBlockingQueue<>();
+        outsider.session.subscribe("/user/queue/jam-access", collector(access));
+        host.session.send("/app/jam/" + code + "/chat", Map.of("text", "secret plans"));
+        assertThat(host.await(host.events, e -> type("CHAT").test(e) && "secret plans".equals(payload(e).get("text"))))
+                .isNotNull();
+        assertThat(outsider.await(outsider.events, e -> true)).isNull();   // … so it overhears nothing
+
+        // … and joining without a key is refused privately.
+        outsider.session.send("/app/jam/" + code + "/join", Map.of("name", "Riya"));
+        var refused = outsider.await(outsider.errors, e -> true);
+        assertThat(refused).isNotNull();
+        assertThat(refused.get("code")).isEqualTo("FORBIDDEN");
+
+        // Ask to join → host sees the request → lets them in → the requester gets a personal pass.
+        outsider.session.send("/app/jam/" + code + "/request", Map.of("name", "Riya"));
+        var requests = host.await(host.events, e -> type("REQUESTS").test(e)
+                && !((java.util.List<?>) payload(e).get("requests")).isEmpty());
+        assertThat(requests).isNotNull();
+        var request = ((java.util.List<Map<String, Object>>) payload(requests).get("requests")).get(0);
+        assertThat(request.get("name")).isEqualTo("Riya");
+        host.session.send("/app/jam/" + code + "/admit",
+                Map.of("hostToken", token, "requestId", request.get("id"), "allow", true));
+        var approved = outsider.await(access, e -> "APPROVED".equals(e.get("type")));
+        assertThat(approved).isNotNull();
+        String pass = (String) approved.get("pass");
+        assertThat(pass).isNotBlank();
+
+        // With the pass the same connection may now subscribe, join and hear the room.
+        BlockingQueue<Map<String, Object>> inside = new LinkedBlockingQueue<>();
+        outsider.subscribeJam(code, pass, inside);
+        outsider.session.send("/app/jam/" + code + "/join", Map.of("name", "Riya", "key", pass));
+        assertThat(host.await(host.events, e -> type("MEMBERS").test(e)
+                && ((Number) payload(e).get("memberCount")).intValue() == 2)).isNotNull();
+        host.session.send("/app/jam/" + code + "/chat", Map.of("text", "welcome in"));
+        assertThat(outsider.await(inside, e -> type("CHAT").test(e) && "welcome in".equals(payload(e).get("text"))))
+                .isNotNull();
+
+        outsider.session.disconnect();
         host.session.disconnect();
     }
 }

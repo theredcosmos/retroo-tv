@@ -20,21 +20,43 @@ public final class JamModels {
 
     // ---- REST -------------------------------------------------------------------------------------------
 
-    /** {@code POST /api/jams}. Lengths re-checked after whitespace normalisation in the service. */
+    /** Open jams are listed in the lobby and anyone with the code joins; private ones need a key or the host's OK. */
+    public enum Visibility { OPEN, PRIVATE }
+
+    /**
+     * {@code POST /api/jams}. Lengths re-checked after whitespace normalisation in the service.
+     * {@code visibility} is optional (default {@link Visibility#OPEN}).
+     */
     public record CreateJamRequest(
             @NotBlank(message = "is required") @Size(max = 40, message = "must be at most 40 characters")
             String name,
             @NotBlank(message = "is required") @Size(max = 30, message = "must be at most 30 characters")
-            String hostName) {
+            String hostName,
+            Visibility visibility) {
+
+        public CreateJamRequest(String name, String hostName) {
+            this(name, hostName, null);
+        }
     }
 
-    /** The host token appears exactly once, here. It is never part of a snapshot or event. */
-    public record CreateJamResponse(JamSnapshot jam, String hostToken) {
+    /**
+     * The host token appears exactly once, here; never in a snapshot or event. {@code inviteToken} is the private
+     * invite-link secret, also host-only (fetch it again with {@code GET /api/jams/{code}/invite}).
+     */
+    public record CreateJamResponse(JamSnapshot jam, String hostToken, String inviteToken) {
+    }
+
+    /** {@code POST /api/jams/{code}/visibility}. */
+    public record VisibilityRequest(Visibility visibility) {
+    }
+
+    /** {@code GET|POST /api/jams/{code}/invite} (host only). */
+    public record InviteResponse(String inviteToken) {
     }
 
     /** Lobby row. */
     public record JamSummary(String code, String name, String hostName, int memberCount,
-                             Instant createdAt, Instant expiresAt) {
+                             Instant createdAt, Instant expiresAt, Visibility visibility) {
     }
 
     /**
@@ -45,7 +67,7 @@ public final class JamModels {
     public record JamSnapshot(String code, String name, String hostName, int memberCount,
                               Instant createdAt, Instant expiresAt, boolean extended, List<String> members,
                               @JsonInclude(JsonInclude.Include.ALWAYS) PlaybackState playback,
-                              List<ChatMessage> chat, long serverTime) {
+                              List<ChatMessage> chat, long serverTime, Visibility visibility, boolean locked) {
     }
 
     // ---- shared state -----------------------------------------------------------------------------------
@@ -66,7 +88,16 @@ public final class JamModels {
 
     // ---- STOMP: client → server ---------------------------------------------------------------------------
 
-    public record JoinMessage(String name, String hostToken) {
+    /** {@code key} = invite token or personal pass, needed to join a private jam (the host uses {@code hostToken}). */
+    public record JoinMessage(String name, String hostToken, String key) {
+    }
+
+    /** Ask the host of a private jam to be let in. */
+    public record RequestMessage(String name) {
+    }
+
+    /** Host's answer to a join request. */
+    public record AdmitMessage(String hostToken, String requestId, Boolean allow) {
     }
 
     public record ChatInput(String text) {
@@ -79,7 +110,7 @@ public final class JamModels {
 
     // ---- STOMP: server → client ---------------------------------------------------------------------------
 
-    public enum EventType { STATE, CHAT, MEMBERS, EXTENDED, ENDING_SOON, ENDED }
+    public enum EventType { STATE, CHAT, MEMBERS, EXTENDED, ENDING_SOON, ENDED, REQUESTS, VISIBILITY }
 
     /** Envelope for everything on {@code /topic/jam/{code}}; {@code serverTime} lets clients compute clock offset. */
     public record JamEvent(EventType type, Object payload, long serverTime) {
@@ -89,6 +120,25 @@ public final class JamModels {
     }
 
     public record EndingSoonPayload(Instant expiresAt) {
+    }
+
+    /** A pending "let me in" for a private jam. {@code id} is random — never the requester's session id. */
+    public record JoinRequest(String id, String name) {
+    }
+
+    public record RequestsPayload(List<JoinRequest> requests) {
+    }
+
+    public record VisibilityPayload(Visibility visibility) {
+    }
+
+    public enum AccessType { APPROVED, DECLINED }
+
+    /**
+     * Sent only to the requester on {@code /user/queue/jam-access}. APPROVED carries a personal {@code pass} (their
+     * key from now on, also after a reload) and the full snapshot to enter with.
+     */
+    public record AccessMessage(AccessType type, String code, String pass, JamSnapshot jam) {
     }
 
     public enum EndReason { EXPIRED, HOST_ENDED }

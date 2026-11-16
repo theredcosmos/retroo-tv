@@ -122,29 +122,31 @@
   --ambient-a: 0.5;
 }
 
-/* ---------- Villa: daylight through an arch, dappled leaves, walnut cabinet TV ---------- */
+/* ---------- Ivory Villa: creamy beige limewash, arched daylight, walnut cabinet TV ----------
+   Ivory and Villa merged. Walls, light and glass are a step deeper than the old near-white ivory so the room
+   reads warm and calm instead of bright; the walnut TV is the darkest, sharpest thing in view. */
 [data-theme='villa'] {
   --ink: #2b2118;
-  --ink-dim: rgba(43, 33, 24, 0.7);
-  --ink-faint: rgba(43, 33, 24, 0.46);
-  --line: rgba(60, 40, 20, 0.14);
-  --glass: rgba(255, 250, 240, 0.42);
-  --glass-strong: rgba(250, 244, 232, 0.92);
-  --glass-highlight: rgba(255, 255, 255, 0.6);
-  --hover: rgba(60, 40, 20, 0.06);
+  --ink-dim: rgba(43, 33, 24, 0.72);
+  --ink-faint: rgba(43, 33, 24, 0.5);
+  --line: rgba(60, 40, 20, 0.16);
+  --glass: rgba(246, 236, 216, 0.42);
+  --glass-strong: rgba(240, 229, 207, 0.95);
+  --glass-highlight: rgba(255, 250, 238, 0.5);
+  --hover: rgba(60, 40, 20, 0.07);
   --shadow: rgba(60, 40, 20, 0.35);
-  --accent: #8a6a3a;
-  --accent-ink: #fffaf0;
-  --page-bg: #e9dfcd;
-  --text-shadow: 0 1px 10px rgba(255, 250, 240, 0.6);
+  --accent: #7c5a2e;
+  --accent-ink: #fbf3e4;
+  --page-bg: #d9cbb0;
+  --text-shadow: 0 1px 10px rgba(245, 234, 212, 0.55);
 
-  --wall-1: #f1e7d5;
-  --wall-2: #e2d3b8;
-  --wall-3: #b9a37f;
-  --light: 255, 248, 228;
-  --light-a: 0.75;
-  --floor-1: #d9cdb8;
-  --floor-2: #a99a80;
+  --wall-1: #e4d5ba;
+  --wall-2: #cfbc98;
+  --wall-3: #9e8662;
+  --light: 255, 240, 212;
+  --light-a: 0.5;
+  --floor-1: #c8b591;
+  --floor-2: #8e7a58;
   --surface-1: #5a3a20;
   --surface-2: #2f1d0e;
 
@@ -157,7 +159,8 @@
   --knob-1: #3a2c22;
   --knob-2: #1e1610;
 
-  --ambient-a: 0.28;
+  --video-filter: saturate(1.04) contrast(1.03) sepia(0.06);
+  --ambient-a: 0.24;
   --grain-film: 0.05;
 }
 
@@ -182,13 +185,19 @@
   --light-a: 0.32;
   --floor-1: #0c101b;
   --floor-2: #04060a;
-  --surface-1: #2e2018;
-  --surface-2: #120c08;
+  --surface-1: #1c2233;
+  --surface-2: #0a0d16;
 
-  --cabinet-1: #4a2e1c;
-  --cabinet-2: #352013;
-  --cabinet-3: #20140b;
-  --grain-a: 0.3;
+  /* Midnight-blue lacquer with silver trim: belongs to the moonlit room (the old brown set looked muddy here),
+     and the warm picture is now the only warm thing in view. */
+  --cabinet-1: #2c3a5c;
+  --cabinet-2: #1c2640;
+  --cabinet-3: #0e1424;
+  --grain-a: 0;
+  --bezel: #080a12;
+  --trim: rgba(190, 205, 255, 0.32);
+  --knob-1: #3a4560;
+  --knob-2: #161c2c;
   --ambient-a: 0.55;
 }
 
@@ -255,39 +264,6 @@
   --cabinet-3: #31200f;
   --ambient-a: 0.5;
   --grain-film: 0.06;
-}
-
-/* ---------- Ivory (minimal, light): gallery white, soft daylight ---------- */
-[data-theme='ivory'] {
-  --ink: #1d1b18;
-  --ink-dim: rgba(29, 27, 24, 0.66);
-  --ink-faint: rgba(29, 27, 24, 0.42);
-  --line: rgba(29, 27, 24, 0.12);
-  --glass: rgba(255, 253, 249, 0.5);
-  --glass-strong: rgba(252, 250, 246, 0.94);
-  --glass-highlight: rgba(255, 255, 255, 0.8);
-  --hover: rgba(29, 27, 24, 0.05);
-  --shadow: rgba(40, 30, 20, 0.22);
-  --accent: #1d1b18;
-  --accent-ink: #fbf8f2;
-  --page-bg: #efebe4;
-  --text-shadow: none;
-
-  --wall-1: #f6f3ee;
-  --wall-2: #ebe6dd;
-  --wall-3: #d6cfc3;
-  --light: 255, 255, 255;
-  --light-a: 0.6;
-  --floor-1: #e3ddd2;
-  --floor-2: #cfc7b9;
-  --surface-1: #e9e4db;
-  --surface-2: #c9c1b3;
-
-  --cabinet-1: #7a4e30;
-  --cabinet-2: #5c3820;
-  --cabinet-3: #3e2513;
-  --ambient-a: 0.22;
-  --grain-film: 0.035;
 }
 
 /* ---------- Noir (minimal): black & white cinema ---------- */

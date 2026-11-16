@@ -86,12 +86,19 @@ public class PlaylistService {
                         "Please paste a YouTube Music playlist link (it contains 'list=')."));
 
         String displayName = normalise(request.displayName());
+        String playlistName = normalise(request.playlistName());
+        if (displayName == null || displayName.isEmpty()) {
+            throw new ApiException.BadRequest("Please enter your name.");
+        }
+        if (playlistName == null || playlistName.isEmpty()) {
+            throw new ApiException.BadRequest("Please give the playlist a name.");
+        }
         if (repository.existsByPlaylistIdAndDisplayNameIgnoreCase(ref.playlistId(), displayName)) {
             throw new ApiException.Conflict("You've already shared this playlist.");
         }
 
         var saved = repository.save(new SharedPlaylist(displayName, ref.playlistId(), ref.canonicalUrl(),
-                normalise(request.playlistName()), blankToNull(normalise(request.note())), clock.instant()));
+                playlistName, blankToNull(normalise(request.note())), clock.instant()));
 
         var response = PlaylistResponse.from(saved);
         events.publishEvent(new PlaylistShared(response));

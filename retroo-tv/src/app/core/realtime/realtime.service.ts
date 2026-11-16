@@ -58,8 +58,8 @@ export class RealtimeService {
    * Subscribe to any destination and get parsed JSON bodies. `watch()` is lazy and re-subscribes after every
    * reconnect; unsubscribing from the returned Observable sends STOMP UNSUBSCRIBE.
    */
-  watchJson<T>(destination: string): Observable<T> {
-    return this.stomp.watch(destination).pipe(map((m) => JSON.parse(m.body) as T));
+  watchJson<T>(destination: string, headers?: Record<string, string>): Observable<T> {
+    return this.stomp.watch(destination, headers).pipe(map((m) => JSON.parse(m.body) as T));
   }
 
   /** Send a JSON message to an `/app/**` destination (queued by RxStomp until the socket is open). */

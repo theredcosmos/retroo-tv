@@ -38,6 +38,11 @@
       <small class="count">{{ form.controls.note.value.length }}/140</small>
     </label>
 
+    <label class="check">
+      <input type="checkbox" [checked]="toJam()" (change)="toJam.set($any($event.target).checked)" />
+      <span>👥 {{ jamOptionLabel() }}</span>
+    </label>
+
     @if (formError(); as e) {
       <p class="form-err" role="alert">{{ e }}</p>
     }
@@ -45,7 +50,7 @@
     <footer>
       <button type="button" class="ghost-btn" (click)="close()">Cancel</button>
       <button type="submit" class="pill-btn" [disabled]="submitting()">
-        {{ submitting() ? 'Sharing…' : 'Share' }}
+        {{ submitting() ? 'Sharing…' : toJam() ? 'Share & jam' : 'Share' }}
       </button>
     </footer>
   </form>

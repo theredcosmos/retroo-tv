@@ -2,16 +2,15 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { JamStore } from '../../core/jam/jam.store';
 import { PlayerStore } from '../../core/player/player.store';
 import { RealtimeService } from '../../core/realtime/realtime.service';
-import { ThemePickerComponent } from './theme-picker.component';
 
 /**
- * Top bar, deliberately quiet: live listeners (left), a serif wordmark (centre), and on the right the scene
- * picker, the Jam drawer button and a link to what's on — the decade on YouTube Music, or the shared playlist.
+ * Top bar, deliberately quiet: live listeners (left), a serif wordmark (centre), and on the right the Jam drawer
+ * button and a link to what's on — the decade on YouTube Music, or the shared playlist. (The scene picker lives in
+ * the bottom-right corner of the stage — see App.)
  */
 @Component({
   selector: 'app-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ThemePickerComponent],
   template: `
     <div class="side left">
       <div class="pill glass" [class.offline]="!connected()" role="status" aria-live="polite">
@@ -23,7 +22,6 @@ import { ThemePickerComponent } from './theme-picker.component';
     <h1 class="wordmark">Retroo <em>TV</em></h1>
 
     <div class="side right">
-      <app-theme-picker />
       <button type="button" class="pill glass jam" (click)="jam.drawerOpen.set(!jam.drawerOpen())"
               [attr.aria-expanded]="jam.drawerOpen()" [class.active]="jam.inJam()">
         @if (jam.inJam()) { <span class="dot" aria-hidden="true"></span> Jam · {{ jam.members().length }} }

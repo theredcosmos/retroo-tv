@@ -7,9 +7,15 @@ import { Directive, ElementRef, OnDestroy, afterNextRender, effect, inject, inpu
  *  - The canvas is small (320×240) and CSS-scaled up (smoothly), so each frame fills
  *    only ~77k pixels — cheap even on phones.
  *  - A pre-allocated Uint32Array view over ImageData writes one 32-bit RGBA value per pixel (no per-channel loop).
+ *  - Redrawn at ~30 fps (analogue snow doesn't need 60) — half the CPU of a per-frame redraw.
+ *  - The old CSS `filter: contrast() brightness()` is baked into the grey range, so the GPU doesn't re-filter
+ *    the canvas on every frame.
  *  - The loop runs only while `appNoiseActive` is true and stops on destroy; with prefers-reduced-motion it draws
  *    a single static frame.
  */
+/** ~30 fps. */
+const FRAME_MS = 33;
+
 @Directive({ selector: 'canvas[appStaticNoise]' })
 export class StaticNoiseDirective implements OnDestroy {
   readonly appNoiseActive = input(true);
@@ -40,8 +46,12 @@ export class StaticNoiseDirective implements OnDestroy {
 
   private start(): void {
     if (this.frame !== undefined || this.reducedMotion) return;
-    const loop = () => {
-      this.draw();
+    let last = 0;
+    const loop = (t: number) => {
+      if (t - last >= FRAME_MS) {
+        last = t;
+        this.draw();
+      }
       this.frame = requestAnimationFrame(loop);
     };
     this.frame = requestAnimationFrame(loop);
@@ -60,10 +70,10 @@ export class StaticNoiseDirective implements OnDestroy {
     for (let y = 0; y < h; y++) {
       // ~6% of rows get an interference streak (brighter or darker band), like weak-signal analogue snow.
       const r = Math.random();
-      const bias = r < 0.03 ? 45 : r < 0.06 ? -40 : 0;
+      const bias = r < 0.03 ? 39 : r < 0.06 ? -35 : 0;
       for (let x = 0, i = y * w; x < w; x++, i++) {
-        // mid-grey range (35–215) instead of pure black/white: softer, more like phosphor snow
-        const v = Math.min(255, Math.max(0, 35 + ((Math.random() * 180) | 0) + bias));
+        // mid-grey range (40–198) instead of pure black/white: softer, more like phosphor snow
+        const v = Math.min(255, Math.max(0, 40 + ((Math.random() * 158) | 0) + bias));
         // little-endian ABGR: opaque grey
         px[i] = 0xff000000 | (v << 16) | (v << 8) | v;
       }

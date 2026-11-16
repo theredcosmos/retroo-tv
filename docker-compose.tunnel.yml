@@ -1,0 +1,20 @@
+# Free public HTTPS address with no domain, no open ports and no router setup: a Cloudflare "quick tunnel".
+#
+#   docker compose -f docker-compose.lite.yml -f docker-compose.tunnel.yml up -d --build
+#   docker compose -f docker-compose.lite.yml -f docker-compose.tunnel.yml logs tunnel | grep trycloudflare.com
+#
+# Good for running Retroo TV from your own computer / Raspberry Pi / any free VM. Trade-offs (Cloudflare's terms):
+# the *.trycloudflare.com address changes every time the tunnel restarts, there's no uptime guarantee, and about
+# 200 connections can be open at once (each listener holds one WebSocket). For a fixed address, use a named
+# tunnel with a domain on Cloudflare instead — see docs/DEPLOYMENT.md.
+
+services:
+  frontend:
+    ports: !reset []        # nothing published: the tunnel connects out to Cloudflare (Compose ≥ 2.24)
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://frontend:80
+    depends_on:
+      - frontend

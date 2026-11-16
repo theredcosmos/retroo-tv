@@ -35,6 +35,8 @@ import java.util.List;
 public class JamController {
 
     public static final String TOKEN_HEADER = "X-Jam-Token";
+    /** Invite token or personal pass for a private jam (header, not query string: kept out of logs). */
+    public static final String KEY_HEADER = "X-Jam-Key";
 
     private final JamService jams;
 
@@ -55,10 +57,34 @@ public class JamController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(jams.list());
     }
 
-    @Operation(summary = "Full state of one jam: members, playback, recent chat")
+    @Operation(summary = "Full state of one jam; a private jam without a valid X-Jam-Key returns a locked snapshot")
     @GetMapping("/{code}")
-    public ResponseEntity<JamSnapshot> get(@PathVariable String code) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(jams.snapshot(code));
+    public ResponseEntity<JamSnapshot> get(@PathVariable String code,
+                                           @RequestHeader(name = KEY_HEADER, required = false) String key,
+                                           @RequestHeader(name = TOKEN_HEADER, required = false) String token) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(jams.snapshot(code, key != null ? key : token));
+    }
+
+    @Operation(summary = "Host: make the jam OPEN or PRIVATE")
+    @PostMapping("/{code}/visibility")
+    public JamSnapshot visibility(@PathVariable String code, @RequestBody JamModels.VisibilityRequest body,
+                                  @RequestHeader(name = TOKEN_HEADER, required = false) String token) {
+        return jams.setVisibility(code, token, body == null ? null : body.visibility());
+    }
+
+    @Operation(summary = "Host: the private invite token (link = /jam/{code}#k={token})")
+    @GetMapping("/{code}/invite")
+    public ResponseEntity<JamModels.InviteResponse> invite(@PathVariable String code,
+                                                           @RequestHeader(name = TOKEN_HEADER, required = false) String token) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(jams.invite(code, token));
+    }
+
+    @Operation(summary = "Host: new invite token — old invite links stop working")
+    @PostMapping("/{code}/invite")
+    public JamModels.InviteResponse rotateInvite(@PathVariable String code,
+                                                 @RequestHeader(name = TOKEN_HEADER, required = false) String token) {
+        return jams.rotateInvite(code, token);
     }
 
     @Operation(summary = "Host: extend the jam once by 60 minutes")

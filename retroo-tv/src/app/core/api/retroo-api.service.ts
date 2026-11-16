@@ -8,6 +8,7 @@ import {
   DecadeSlug,
   JamSnapshot,
   JamSummary,
+  JamVisibility,
   PageResponse,
   SharePlaylistRequest,
   SharedPlaylist,
@@ -57,16 +58,38 @@ export class RetrooApi {
 
   // ---- jam sessions -----------------------------------------------------------------------------------------
 
-  createJam(name: string, hostName: string): Observable<CreateJamResponse> {
-    return this.http.post<CreateJamResponse>(`${this.base}/jams`, { name, hostName });
+  createJam(name: string, hostName: string, visibility: JamVisibility = 'OPEN'): Observable<CreateJamResponse> {
+    return this.http.post<CreateJamResponse>(`${this.base}/jams`, { name, hostName, visibility });
   }
 
   jams(): Observable<JamSummary[]> {
     return this.http.get<JamSummary[]>(`${this.base}/jams`);
   }
 
-  jam(code: string): Observable<JamSnapshot> {
-    return this.http.get<JamSnapshot>(`${this.base}/jams/${encodeURIComponent(code)}`);
+  /** `key` (host token, invite token or pass) unlocks a private jam; without it a private jam comes back `locked`. */
+  jam(code: string, key?: string | null): Observable<JamSnapshot> {
+    return this.http.get<JamSnapshot>(`${this.base}/jams/${encodeURIComponent(code)}`, {
+      headers: key ? { 'X-Jam-Key': key } : {},
+    });
+  }
+
+  setJamVisibility(code: string, hostToken: string, visibility: JamVisibility): Observable<JamSnapshot> {
+    return this.http.post<JamSnapshot>(`${this.base}/jams/${encodeURIComponent(code)}/visibility`, { visibility }, {
+      headers: { 'X-Jam-Token': hostToken },
+    });
+  }
+
+  jamInvite(code: string, hostToken: string): Observable<{ inviteToken: string }> {
+    return this.http.get<{ inviteToken: string }>(`${this.base}/jams/${encodeURIComponent(code)}/invite`, {
+      headers: { 'X-Jam-Token': hostToken },
+    });
+  }
+
+  /** New invite token: every old invite link stops working (people already in stay). */
+  rotateJamInvite(code: string, hostToken: string): Observable<{ inviteToken: string }> {
+    return this.http.post<{ inviteToken: string }>(`${this.base}/jams/${encodeURIComponent(code)}/invite`, null, {
+      headers: { 'X-Jam-Token': hostToken },
+    });
   }
 
   extendJam(code: string, hostToken: string): Observable<JamSnapshot> {

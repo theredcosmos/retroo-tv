@@ -37,16 +37,21 @@ const LOADING_TITLE = 'Tuning in…';
 
 /** Stop skipping after this many unplayable videos in a row, so a bad catalog can't cause an infinite loop. */
 const MAX_CONSECUTIVE_SKIPS = 5;
-/** Minimum time the static is visible when the user changes channel — sells the "tuning" effect. */
-export const CHANNEL_STATIC_MS = 1_500;
-/** Static between two songs (auto-advance) — the "90s TV losing signal" moment. */
-export const SIGNAL_LOSS_MS = 3_200;
+/**
+ * Minimum time the static is visible when the user changes channel — sells the "tuning" effect. Kept short:
+ * the static also stays up while YouTube buffers, so a longer floor only made every click feel laggy.
+ */
+export const CHANNEL_STATIC_MS = 700;
+/** Static between two songs (auto-advance) — the "90s TV losing signal" moment (matches `snow-in` in the CSS). */
+export const SIGNAL_LOSS_MS = 2_200;
 /** Jam guests re-seek when they are further than this from the host's position. */
 const DRIFT_S = 2;
 /** How long the "picture warming up" effect runs once the new video actually starts. */
 const ARRIVAL_MS = 900;
 /** Pressing "previous" after this many seconds restarts the song instead (like every music player). */
 const RESTART_THRESHOLD_S = 3;
+/** Shuffle preference for shared playlists, remembered per browser. */
+const SHUFFLE_KEY = 'retroo.shuffle';
 
 /**
  * Single source of truth for playback (a lightweight signal-based store — no NgRx needed at this size).
@@ -85,6 +90,11 @@ export class PlayerStore {
   readonly followMode = signal(false);
   /** Emits when *this* user seeks — the jam host forwards it to guests. */
   readonly seeked$ = new Subject<number>();
+  /**
+   * Shuffle for shared playlists: songs play in a random order, each once per pass (a fresh shuffle every pass,
+   * never repeating the song that just played). Off = the playlist's own order. Decade channels are always random.
+   */
+  readonly shuffle = signal(readShuffle());
 
   /** Latest host state (guests) and the server-clock offset it arrived with. */
   private latestRemote?: { state: PlaybackState; offsetMs: number };
@@ -101,6 +111,9 @@ export class PlayerStore {
   /** Most recent video ids, newest last. */
   private recent: string[] = [];
   private playlistIds: string[] = [];
+  /** Play order: indexes into playlistIds (identity when shuffle is off, a permutation when on). */
+  private playlistOrder: number[] = [];
+  /** Position in playlistOrder of the song on the TV. */
   private playlistIndex = 0;
   private arrivalTimer?: ReturnType<typeof setTimeout>;
 
@@ -187,10 +200,15 @@ export class PlayerStore {
   /** First user gesture: must call play() synchronously for browsers to allow sound. */
   tuneIn(): void {
     this.awaitingGesture.set(false);
-    if (this.followMode() && this.latestRemote) {
-      this.yt.play(); // synchronous inside the click — unlocks audio
-      this.status.set('on');
-      this.syncToRemote();
+    if (this.followMode()) {
+      if (this.latestRemote) {
+        this.yt.play(); // synchronous inside the click — unlocks audio
+        this.status.set('on');
+        this.syncToRemote();
+      } else {
+        // Jam guest, host hasn't played anything yet: don't start our own random song — show snow and wait.
+        this.status.set('tuning');
+      }
       return;
     }
     if (this.current()) {
@@ -247,7 +265,7 @@ export class PlayerStore {
       return;
     }
     if (this.followMode()) return;
-    this.isPlaying() ? this.yt.pause() : this.yt.play();
+    this.yt.wantsPlaying() ? this.yt.pause() : this.yt.play();
   }
 
   seek(seconds: number): void {
@@ -278,16 +296,41 @@ export class PlayerStore {
       return;
     }
     this.source.set({ kind: 'playlist', playlistId, name: p.playlistName, sharedBy: p.displayName, url: p.playlistUrl });
+    this.history = [];
     this.playlistIds = ids;
+    this.playlistOrder = this.shuffle() ? shuffled(ids.length) : identity(ids.length);
     this.playlistIndex = 0;
     this.consecutiveSkips = 0;
-    await this.tuneTo(() => Promise.resolve(this.playlistSong(0)), 'channel');
+    await this.tuneTo(() => Promise.resolve(this.playlistSong(this.playlistOrder[0])), 'channel');
+  }
+
+  /**
+   * Turn playlist shuffle on/off. Takes effect from the next song — the one on the TV keeps playing:
+   * on → it stays first and the rest are shuffled after it; off → playback continues in playlist order from it.
+   */
+  toggleShuffle(): void {
+    if (this.followMode()) return;
+    const on = !this.shuffle();
+    this.shuffle.set(on);
+    writeShuffle(on);
+    const n = this.playlistIds.length;
+    if (!n) return;
+    const current = this.playlistOrder[this.playlistIndex] ?? 0;
+    if (on) {
+      this.playlistOrder = [current, ...shuffled(n).filter((i) => i !== current)];
+      this.playlistIndex = 0;
+    } else {
+      this.playlistOrder = identity(n);
+      this.playlistIndex = current;
+    }
   }
 
   /** Back to the decade shuffle (from playlist mode). */
   async leavePlaylist(): Promise<void> {
+    if (this.followMode()) return;
     const slug = this.activeDecade();
     this.source.set({ kind: 'decade' });
+    this.history = [];
     await this.tuneTo(() => this.pickRandom(slug), 'channel');
   }
 
@@ -389,8 +432,17 @@ export class PlayerStore {
 
   private playlistStep(delta: number): Song {
     const n = this.playlistIds.length;
-    this.playlistIndex = (((this.playlistIndex + delta) % n) + n) % n;
-    return this.playlistSong(this.playlistIndex);
+    if (this.shuffle() && delta > 0 && this.playlistIndex + 1 >= n && n > 1) {
+      // End of a shuffled pass: reshuffle for the next one, never starting with the song that just played.
+      const last = this.playlistOrder[this.playlistIndex];
+      const next = shuffled(n);
+      if (next[0] === last) [next[0], next[n - 1]] = [next[n - 1], next[0]];
+      this.playlistOrder = next;
+      this.playlistIndex = 0;
+    } else {
+      this.playlistIndex = (((this.playlistIndex + delta) % n) + n) % n;
+    }
+    return this.playlistSong(this.playlistOrder[this.playlistIndex]);
   }
 
   private playlistSong(index: number): Song {
@@ -413,6 +465,20 @@ export class PlayerStore {
       return;
     }
     this.history.pop(); // never offer an unplayable song via "previous"
+    if (this.awaitingGesture()) {
+      // Still behind "Tap to tune in": quietly cue a different song. next() would start playback (and dismiss
+      // the prompt) without the user's click.
+      try {
+        const song = await this.pickRandom(this.activeDecade());
+        this.current.set(song);
+        this.history = [song];
+        this.remember(song.videoId);
+        await this.yt.cue(song.videoId);
+      } catch (e) {
+        this.fail(e);
+      }
+      return;
+    }
     await this.next();
   }
 
@@ -420,6 +486,36 @@ export class PlayerStore {
     const err = e as Partial<ApiError>;
     this.status.set('error');
     this.errorMessage.set(err?.detail ?? 'No signal.');
+  }
+}
+
+/** 0..n-1 in a random order (Fisher–Yates). */
+function shuffled(n: number): number[] {
+  const a = identity(n);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function identity(n: number): number[] {
+  return Array.from({ length: n }, (_, i) => i);
+}
+
+function readShuffle(): boolean {
+  try {
+    return localStorage.getItem(SHUFFLE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeShuffle(on: boolean): void {
+  try {
+    localStorage.setItem(SHUFFLE_KEY, on ? '1' : '0');
+  } catch {
+    /* storage blocked — shuffle just won't be remembered */
   }
 }
 

@@ -98,7 +98,6 @@
   width: 100%;
   height: 100%;
   opacity: 0;
-  filter: contrast(0.92) brightness(0.95);
   transition: opacity 0.35s var(--ease);
 
   &.visible { opacity: 0.92; }
@@ -332,7 +331,8 @@
    .t-signal-loss  song ended: picture dims and drifts upward, then snow (≈3 s)
    .arriving       new picture: settles from over-bright, slightly soft
    .power-on       first tune-in: a thin bright line opens into the picture
-   .live           normal viewing: barely-there mains hum
+   (.live used to animate the scanlines forever — a blended layer over the video, re-composited every
+   frame. The scanlines are static now; the picture looks the same and playback stays smooth.)
    =========================================================================== */
 .roll,
 .flicker {
@@ -361,15 +361,24 @@
 
 .t-signal-loss {
   .yt-crop { animation: lose-signal 1.1s var(--ease) forwards; }
-  .noise.visible { animation: snow-in 3.2s linear forwards; }
+  .noise.visible { animation: snow-in 2.2s linear forwards; }
 }
 
 .arriving .yt-crop { animation: settle 0.8s var(--ease); }
 
+/* Mid-song interference (2–3 short bursts per song): the picture jitters and dims, a little snow and a rolling
+   band come through, brightness flickers. Only transform/opacity are animated — compositor-only, so it costs
+   next to nothing even over a playing video. */
+.glitch {
+  .yt-crop { animation: jitter 0.45s steps(1, end) infinite; }
+  .noise { opacity: 0.18; animation: glitch-snow 0.9s steps(1, end) infinite; }
+  .roll { opacity: 1; animation: roll 1.1s linear infinite; }
+  .flicker { animation: glitch-flicker 0.7s steps(1, end) infinite; }
+}
+
 .power-on .yt-crop,
 .power-on .noise { animation: power-on 0.75s cubic-bezier(0.2, 0.9, 0.1, 1) both; }
 
-.live .scanlines { animation: hum 0.16s steps(2, end) infinite; }
 
 @keyframes roll {
   from { background-position: 0 100%; }
@@ -391,6 +400,30 @@
   100% { transform: translateY(-8%); filter: brightness(0.35) grayscale(1) blur(1px); }
 }
 
+@keyframes jitter {
+  0%, 100% { transform: none; opacity: 1; }
+  18% { transform: translate(-1.2%, 0.4%); opacity: 0.88; }
+  34% { transform: translate(0.8%, -0.3%); opacity: 1; }
+  52% { transform: translate(0, 1.4%); opacity: 0.72; }
+  70% { transform: translate(1.4%, 0); opacity: 0.95; }
+  86% { transform: translate(-0.6%, -0.8%); opacity: 0.85; }
+}
+
+@keyframes glitch-snow {
+  0%, 100% { opacity: 0.12; }
+  25% { opacity: 0.3; }
+  50% { opacity: 0.06; }
+  75% { opacity: 0.24; }
+}
+
+@keyframes glitch-flicker {
+  0%, 100% { opacity: 0; }
+  20% { opacity: 0.12; }
+  35% { opacity: 0.02; }
+  60% { opacity: 0.16; }
+  80% { opacity: 0.04; }
+}
+
 @keyframes snow-in {
   0% { opacity: 0; }
   12% { opacity: 0.35; }
@@ -408,10 +441,6 @@
   45% { transform: scale(1, 0.004); filter: brightness(6); }
   70% { transform: scale(1, 1.02); filter: brightness(1.6); }
   100% { transform: none; filter: none; }
-}
-
-@keyframes hum {
-  50% { opacity: 0.72; }
 }
 
 @keyframes breathe {

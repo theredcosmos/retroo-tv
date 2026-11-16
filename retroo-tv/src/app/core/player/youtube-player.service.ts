@@ -29,6 +29,13 @@ export class YouTubePlayerService {
   readonly duration = signal(0);
   readonly muted = signal(false);
 
+  /**
+   * Play/pause the user asked for that the iframe hasn't confirmed yet. The iframe applies commands
+   * asynchronously, so `state` lags a click by ~100 ms; without this a quick double-click on play/pause read the
+   * stale state twice and sent "pause" both times.
+   */
+  private pendingPlaying?: boolean;
+
   /** Fires when a track finishes. */
   readonly ended$ = new Subject<void>();
   /** Fires with the YT error code when a video cannot be played (removed, embedding disabled…). */
@@ -65,7 +72,10 @@ export class YouTubePlayerService {
               origin: location.origin,
             },
             events: {
-              onReady: () => resolve(),
+              onReady: () => {
+                this.muted.set(this.player?.isMuted() ?? false);
+                resolve();
+              },
               onStateChange: (e) => this.onStateChange(e.data),
               onError: (e) => this.onError(e.data as number),
             },
@@ -78,6 +88,7 @@ export class YouTubePlayerService {
   /** Loads and plays a video (only works after a user gesture has happened on the page). */
   async load(videoId: string): Promise<void> {
     await this.ready;
+    this.pendingPlaying = true;
     this.currentTime.set(0);
     this.duration.set(0);
     this.player?.loadVideoById(videoId);
@@ -86,6 +97,7 @@ export class YouTubePlayerService {
   /** Loads a video without playing — used before the first user gesture so autoplay policies are respected. */
   async cue(videoId: string): Promise<void> {
     await this.ready;
+    this.pendingPlaying = undefined;
     this.player?.cueVideoById(videoId);
   }
 
@@ -117,11 +129,18 @@ export class YouTubePlayerService {
 
   /** Must be called synchronously inside a click handler the first time (browser autoplay policy). */
   play(): void {
+    this.pendingPlaying = true;
     this.player?.playVideo();
   }
 
   pause(): void {
+    this.pendingPlaying = false;
     this.player?.pauseVideo();
+  }
+
+  /** Whether playback is (or is about to be) running — includes a play/pause the iframe hasn't confirmed yet. */
+  wantsPlaying(): boolean {
+    return this.pendingPlaying ?? this.state() === 'playing';
   }
 
   seekTo(seconds: number): void {
@@ -129,9 +148,13 @@ export class YouTubePlayerService {
     this.currentTime.set(seconds);
   }
 
+  /**
+   * Our `muted` signal is the source of truth: `player.isMuted()` only updates after the iframe has processed the
+   * previous command, so two quick clicks used to read the stale value and both mute.
+   */
   toggleMute(): void {
     if (!this.player) return;
-    if (this.player.isMuted()) {
+    if (this.muted()) {
       this.player.unMute();
       this.muted.set(false);
     } else {
@@ -151,6 +174,7 @@ export class YouTubePlayerService {
     };
     const next = map[code] ?? 'unstarted';
     this.state.set(next);
+    if (next === 'playing' || next === 'paused' || next === 'ended') this.pendingPlaying = undefined;
 
     if (next === 'playing') {
       this.duration.set(this.player?.getDuration() ?? 0);
