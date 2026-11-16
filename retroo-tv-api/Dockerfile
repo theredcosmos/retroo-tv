@@ -16,6 +16,8 @@ RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination 
 FROM eclipse-temurin:17-jre-alpine
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
+# Writable folder for the "lite" profile's H2 database (a named volume mounted here inherits this ownership).
+RUN mkdir -p /app/data && chown app:app /app/data
 COPY --from=layers /layers/extracted/dependencies/ ./
 COPY --from=layers /layers/extracted/spring-boot-loader/ ./
 COPY --from=layers /layers/extracted/snapshot-dependencies/ ./

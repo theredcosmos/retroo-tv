@@ -61,3 +61,6 @@ jobs:
         run: |
           cp .env.example .env
           docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+          docker compose -f docker-compose.lite.yml config --quiet
+          docker compose -f docker-compose.lite.yml -f docker-compose.prod.yml config --quiet
+          docker compose -f docker-compose.lite.yml -f docker-compose.tunnel.yml config --quiet

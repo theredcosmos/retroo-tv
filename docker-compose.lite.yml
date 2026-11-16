@@ -1,0 +1,37 @@
+# Lite stack: nginx/Angular + Spring Boot with an H2 database on disk — no Oracle container.
+# Fits free / small servers (runs in well under 1 GB RAM). Same app, same features.
+#
+#   docker compose -f docker-compose.lite.yml up -d --build                                   → http://<server>
+#   docker compose -f docker-compose.lite.yml -f docker-compose.prod.yml up -d --build        → https://DOMAIN (Caddy)
+#   docker compose -f docker-compose.lite.yml -f docker-compose.tunnel.yml up -d --build      → free Cloudflare URL
+#
+# The API keeps jams in memory: run exactly ONE backend. Back up the h2data volume (songs, shared playlists).
+# See docs/DEPLOYMENT.md → "Free options".
+
+services:
+  backend:
+    build: ./retroo-tv-api
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: lite
+      RETROO_DATA_DIR: /app/data
+      RETROO_ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      RETROO_CORS_ORIGINS: ""
+      # Small heap for 1 GB machines; the JVM still uses some memory outside the heap.
+      JAVA_TOOL_OPTIONS: "-Xmx384m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
+    volumes:
+      - h2data:/app/data
+    expose:
+      - "8080"
+
+  frontend:
+    build: ./retroo-tv
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  h2data:

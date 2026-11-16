@@ -125,3 +125,27 @@ springdoc:
 logging:
   level:
     root: INFO
+---
+# "lite": production behaviour without Oracle — an H2 database in a file on disk. For free / small servers
+# (≤ 1 GB RAM) where the Oracle container (~2 GB) doesn't fit. Same app, same Flyway migrations (h2 + common),
+# single instance by design anyway. Not in dev mode: no H2 console, no default admin key, no Swagger UI.
+# Data lives in RETROO_DATA_DIR (a Docker volume in docker-compose.lite.yml) — back that folder up.
+spring:
+  config:
+    activate:
+      on-profile: lite
+  datasource:
+    url: jdbc:h2:file:${RETROO_DATA_DIR:./data}/retroo;MODE=Oracle;DATABASE_TO_UPPER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password: ${RETROO_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 5
+  h2:
+    console:
+      enabled: false
+springdoc:
+  swagger-ui:
+    enabled: false
+logging:
+  level:
+    root: INFO

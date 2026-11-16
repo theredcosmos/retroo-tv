@@ -48,6 +48,8 @@ RETROO TV/
 │   └── INTERVIEW_QUESTIONS.md   200+ interview questions with answers
 ├── docker-compose.yml      Oracle + API + nginx/Angular
 ├── docker-compose.prod.yml production overlay: Caddy + your domain (HTTPS)
+├── docker-compose.lite.yml no-Oracle stack (H2 on disk) for free / small servers
+├── docker-compose.tunnel.yml free public HTTPS via a Cloudflare quick tunnel
 ├── .github/workflows/ci.yml
 ├── gemini.md               project constitution (schemas, rules)
 └── task_plan.md · progress.md · findings.md   project memory
@@ -113,3 +115,5 @@ in a browser (flows + searchable Q&A), then [docs/INTERVIEW_QUESTIONS.md](docs/I
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): one Linux VM with 4 GB+ RAM, a domain, and
 `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
+For **$0**: Oracle Cloud's Always Free VM, or your own computer with a free Cloudflare tunnel and the lite stack
+(`docker-compose.lite.yml`, H2 instead of Oracle). See "Free options" in the guide.

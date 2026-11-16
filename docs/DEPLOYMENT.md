@@ -30,11 +30,106 @@ Only Caddy is reachable from the internet. nginx, the API and Oracle talk over D
    Two copies behind a load balancer would each have half the jams. So: no autoscaling, no "2 replicas".
 2. **Long-lived WebSockets.** The TV, the playlist feed and jams use `/ws`. The host must keep connections open
    for an hour or more. Platforms that sleep idle apps (most free tiers) end every jam when they sleep.
-3. **Memory for Oracle.** Oracle Database Free needs about 2 GB on its own. Plan for **4 GB RAM or more** in total.
+3. **Memory for Oracle.** Oracle Database Free needs about 2 GB on its own. Plan for **4 GB RAM or more** in total
+   for the full stack, or use **lite mode** (H2 on disk instead of Oracle) on a small machine.
 
-That rules out serverless and sleeping free tiers, and points to **one small virtual machine (VM)**.
+That rules out serverless and sleeping free tiers, and points to **one always-on machine**: a VM, or your own
+computer behind a tunnel. For $0 options, see [Free options](#free-options-ranked).
 
-## Where to host
+## Free options (ranked)
+
+Two things make free hosting possible:
+
+- **Lite mode** (`docker-compose.lite.yml`): the same app with an H2 database in a file instead of the Oracle
+  container. It runs in well under 1 GB of RAM, so it fits the small free servers. Data (songs, shared playlists)
+  lives in the `h2data` volume.
+- **Cloudflare quick tunnel** (`docker-compose.tunnel.yml`): a free public `https://….trycloudflare.com` address
+  with no domain, no open ports and no router setup.
+
+Free tiers change often. Check each provider's current terms before you sign up; the notes below were checked in
+November 2026.
+
+| # | Option | Cost | Stays on? | Catch |
+|---|---|---|---|---|
+| 1 | **Oracle Cloud Always Free, ARM VM** | Free | Yes | Card needed to sign up (verification). Popular regions are often "out of capacity". The ARM allowance was reportedly cut in 2026 to 2 CPUs / 12 GB, which is still plenty, even for the full Oracle stack. |
+| 2 | **Your own computer / old laptop / Raspberry Pi + quick tunnel** | Free | While it's switched on | Address changes on every restart; no uptime guarantee; about 200 open connections at once. No card, no account. |
+| 3 | **Your own computer + free DuckDNS name + router port forward** | Free | While it's switched on | Stable address and real HTTPS (Caddy), but your internet provider must allow inbound connections (many mobile/fibre plans use CGNAT, which blocks this). |
+| 4 | **Oracle Cloud Always Free, AMD micro VM (1 GB)** | Free | Yes | Lite mode only. Same sign-up as #1. |
+| 5 | **Google Cloud e2-micro (1 GB)** | Almost free | Yes | Lite mode only. The VM is free in three US regions, but a public IPv4 address is billed (about $0.005/hour, ~$3.60/month) and only 1 GB of outbound traffic per month is free. Videos stream from YouTube, so traffic stays small. |
+
+Not suitable for Retroo TV:
+
+- **Render free**: sleeps after 15 minutes without traffic, which drops every WebSocket and wipes live jams. OK only
+  for a quick demo link.
+- **Fly.io**: no free tier for new accounts.
+- **Hugging Face Spaces**: Docker Spaces now need a paid plan.
+- **Railway**: about $1 of free usage a month; runs out quickly.
+- **Koyeb**: reports conflict (card required, scales to zero when idle); check before relying on it.
+
+### Recipe 1: Oracle Cloud Always Free (best free option)
+
+1. Sign up for Oracle Cloud Free Tier and pick a home region near your listeners (it can't be changed later).
+2. Create a VM: image **Ubuntu 24.04**, shape **VM.Standard.A1.Flex** (ARM), e.g. 2 OCPU / 12 GB. If it says
+   "out of capacity", try another availability domain, or try again later.
+3. Open ports **80 and 443** in two places: the VCN's *security list* (ingress rules) **and** the VM's own firewall:
+   ```bash
+   sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -j ACCEPT && sudo netfilter-persistent save
+   ```
+4. Free domain: create a name at **duckdns.org** and point it at the VM's public IP.
+5. Install Docker and clone the repo (steps 3–4 of "Step by step" below), set `DOMAIN=yourname.duckdns.org` in
+   `.env`, then either the full stack:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+   ```
+   or the lighter one (starts faster, no Oracle):
+   ```bash
+   docker compose -f docker-compose.lite.yml -f docker-compose.prod.yml up -d --build
+   ```
+6. Open `https://yourname.duckdns.org`.
+
+Oracle may reclaim Always Free VMs that sit almost completely idle for a long time; a site people use isn't idle,
+but check Oracle's current idle policy.
+
+### Recipe 2: your own computer + quick tunnel (zero sign-ups)
+
+Needs Docker Desktop (Windows/Mac) or Docker (Linux / Raspberry Pi 4 or newer).
+
+```bash
+git clone https://github.com/theredcosmos/retroo-tv.git && cd retroo-tv
+docker compose -f docker-compose.lite.yml -f docker-compose.tunnel.yml up -d --build
+docker compose -f docker-compose.lite.yml -f docker-compose.tunnel.yml logs tunnel | grep trycloudflare.com
+```
+
+Share the `https://….trycloudflare.com` address it prints. It stays the same until the tunnel restarts (reboot,
+`docker compose down`), then you get a new one. Keep the computer awake (turn off sleep).
+
+**Want a fixed address?** Put a domain on Cloudflare (domains cost money; the tunnel itself is free), create a
+*named* tunnel in the Cloudflare dashboard (Zero Trust → Networks → Tunnels), point its public hostname at
+`http://frontend:80`, and change the tunnel service's `command` to `tunnel --no-autoupdate run --token <token>`.
+
+### Recipe 3: your own computer + DuckDNS + port forwarding
+
+1. Give the computer a fixed LAN IP and forward ports 80 and 443 on your router to it.
+2. Create a DuckDNS name and keep it updated with your home IP (DuckDNS offers a small updater; many routers support it).
+3. Set `DOMAIN=yourname.duckdns.org` in `.env`, then
+   `docker compose -f docker-compose.lite.yml -f docker-compose.prod.yml up -d --build`.
+
+If `https://yourname.duckdns.org` doesn't load from mobile data, your provider is probably using CGNAT: use
+Recipe 2 instead.
+
+### Lite mode: what to know
+
+- One database file in one volume: back up `h2data` the same way as `oradata` in [Backups](#backups) (stop
+  `backend` first).
+- The songs and migrations are the same as with Oracle, but moving data from lite to the full stack later means
+  re-seeding (shared playlists would need exporting). If you expect to keep the server, start with the full stack.
+- On a 1 GB machine, add swap so the image builds don't run out of memory:
+  ```bash
+  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+  ```
+  (Or build the images on your own computer and push them to a registry.)
+
+## Where to host (paid)
 
 | Option | Fits? | Notes |
 |---|---|---|
