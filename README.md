@@ -43,8 +43,11 @@ RETROO TV/
 │   ├── BACKEND.md          every backend component explained
 │   ├── FRONTEND.md         every frontend component explained
 │   ├── API.md              REST + WebSocket contract with examples
-│   └── INTERVIEW_QUESTIONS.md   150+ interview questions with answers
+│   ├── DEPLOYMENT.md       putting it online: one VM, Docker, HTTPS via Caddy
+│   ├── retroo-report.html  build report: flows, diagrams, fixes, filterable interview Q&A
+│   └── INTERVIEW_QUESTIONS.md   200+ interview questions with answers
 ├── docker-compose.yml      Oracle + API + nginx/Angular
+├── docker-compose.prod.yml production overlay: Caddy + your domain (HTTPS)
 ├── .github/workflows/ci.yml
 ├── gemini.md               project constitution (schemas, rules)
 └── task_plan.md · progress.md · findings.md   project memory
@@ -103,4 +106,10 @@ The dev key is `dev-admin-key`; in production set `RETROO_ADMIN_API_KEY` (empty 
 ## Learn the codebase
 
 Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), then [docs/BACKEND.md](docs/BACKEND.md) and
-[docs/FRONTEND.md](docs/FRONTEND.md). Preparing for an interview? → [docs/INTERVIEW_QUESTIONS.md](docs/INTERVIEW_QUESTIONS.md).
+[docs/FRONTEND.md](docs/FRONTEND.md). Preparing for an interview? → open [docs/retroo-report.html](docs/retroo-report.html)
+in a browser (flows + searchable Q&A), then [docs/INTERVIEW_QUESTIONS.md](docs/INTERVIEW_QUESTIONS.md).
+
+## Put it online
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): one Linux VM with 4 GB+ RAM, a domain, and
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.

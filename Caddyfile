@@ -1,0 +1,13 @@
+# Caddy terminates HTTPS for DOMAIN and forwards everything (pages, /api, the /ws WebSocket) to nginx.
+# - Certificates are obtained and renewed automatically.
+# - Caddy ignores X-Forwarded-For sent by visitors and sets it to the real client address; nginx trusts only
+#   Caddy's (private-network) value, so per-IP rate limits can't be dodged with a forged header.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy frontend:80
+}

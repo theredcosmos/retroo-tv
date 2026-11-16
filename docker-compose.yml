@@ -1,16 +1,19 @@
 # Full production-like stack: Oracle Free + Spring Boot API + nginx/Angular.
 #   docker compose up --build        → http://localhost
+#   On a server with a domain + HTTPS: see docs/DEPLOYMENT.md (adds docker-compose.prod.yml).
 # Secrets come from a .env file next to this one (see .env.example); never commit real values.
+# The API keeps jams and the listener count in memory: run exactly ONE backend replica.
 
 services:
   database:
     image: gvenzl/oracle-free:23-slim-faststart
+    restart: unless-stopped
     environment:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:?set ORACLE_PASSWORD in .env}
       APP_USER: retroo
       APP_USER_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
-    ports:
-      - "1521:1521"
+    # Not published: only the backend talks to it. For a local SQL client, temporarily add
+    #   ports: ["127.0.0.1:1521:1521"]
     volumes:
       - oradata:/opt/oracle/oradata
     healthcheck:
@@ -22,6 +25,7 @@ services:
 
   backend:
     build: ./retroo-tv-api
+    restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:oracle:thin:@database:1521/FREEPDB1
@@ -38,6 +42,7 @@ services:
 
   frontend:
     build: ./retroo-tv
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:

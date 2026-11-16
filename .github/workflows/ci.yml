@@ -53,3 +53,11 @@ jobs:
         run: |
           docker build -t retroo-tv-api ./retroo-tv-api
           docker build -t retroo-tv-web ./retroo-tv
+      - name: Check nginx config
+        # nginx only reads its config at start-up, so a typo would otherwise surface on the server.
+        # --add-host stands in for the compose service name the config proxies to.
+        run: docker run --rm --add-host backend:127.0.0.1 retroo-tv-web nginx -t
+      - name: Check compose files
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet

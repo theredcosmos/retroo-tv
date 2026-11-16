@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retroo TV Build Report</title>
+<meta name="description" content="How Retroo TV works: flows, sync, private jams, problems fixed, interview Q&A and deployment.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: left sticky contents rail + one reading column; Q&A is a filterable list of disclosure rows. */
+:root {
+  --bg: #fbf8f3;
+  --surface: #ffffff;
+  --sunken: #f4eee5;
+  --fg: #221a14;
+  --muted: #6b5f55;
+  --line: #e8dfd3;
+  --accent: #b3561b;        /* CRT amber, used sparingly */
+  --accent-soft: #fbeee2;
+  --ok: #17694a;
+  --ok-soft: #e4f3ec;
+  --warn: #9a5b00;
+  --warn-soft: #fdf1dc;
+  --info: #1f4f8a;
+  --info-soft: #e6eef8;
+  --code-bg: #f4eee5;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14100c; --surface: #1c1712; --sunken: #241d17; --fg: #f1e9df; --muted: #ab9d8f; --line: #372d24;
+    --accent: #f0a35e; --accent-soft: #3a2614; --ok: #5fd0a2; --ok-soft: #12302a; --warn: #f2b45a; --warn-soft: #36280f;
+    --info: #8db8ee; --info-soft: #172a40; --code-bg: #241d17; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14100c; --surface: #1c1712; --sunken: #241d17; --fg: #f1e9df; --muted: #ab9d8f; --line: #372d24;
+  --accent: #f0a35e; --accent-soft: #3a2614; --ok: #5fd0a2; --ok-soft: #12302a; --warn: #f2b45a; --warn-soft: #36280f;
+  --info: #8db8ee; --info-soft: #172a40; --code-bg: #241d17; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15.5px; line-height: 1.6; }
+.wrap {
+  display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; max-width: 1180px; margin: 0 auto;
+  padding-block: 40px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+@media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 24px 60px; } }
+
+/* contents rail */
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 14px; }
+nav.toc .brand { font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+nav.toc .tvmark { width: 20px; height: 15px; border-radius: 4px; background: var(--accent); position: relative; box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent) 60%, #000); }
+nav.toc .tvmark::before { content: ""; position: absolute; left: 5px; top: -6px; width: 9px; height: 6px; border: 1.5px solid var(--accent); border-bottom: 0; border-radius: 9px 9px 0 0; }
+nav.toc a { display: block; padding: 5px 10px; color: var(--muted); text-decoration: none; border-left: 2px solid var(--line); }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--fg); border-left-color: var(--accent); outline: none; }
+@media (max-width: 860px) {
+  nav.toc { position: static; }
+  nav.toc .links { display: flex; flex-wrap: wrap; gap: 6px; }
+  nav.toc a { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+}
+
+main { min-width: 0; }
+section { padding-block: 8px 40px; border-bottom: 1px solid var(--line); margin-bottom: 40px; scroll-margin-top: 20px; }
+section:last-child { border-bottom: 0; }
+h1, h2, h3 { font-family: var(--display); letter-spacing: -0.015em; text-wrap: balance; line-height: 1.2; }
+h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 800; margin: 0 0 12px; }
+h2 { font-size: 26px; font-weight: 700; margin: 0 0 14px; }
+h3 { font-size: 18px; font-weight: 600; margin: 28px 0 8px; }
+p, li { max-width: 68ch; }
+.lede { font-size: 18px; color: var(--muted); max-width: 62ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 6px; }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre.code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.55; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* facts strip */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 24px 0 8px; }
+.fact { background: var(--surface); padding: 14px 16px; }
+.fact .n { font-family: var(--display); font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fact .l { font-size: 13px; color: var(--muted); }
+.fact.hl .n { color: var(--accent); }
+
+.stack { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.tag { font-family: var(--mono); font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--sunken); color: var(--fg); border: 1px solid var(--line); }
+
+/* tables */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; background: var(--sunken); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+.pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.info { background: var(--info-soft); color: var(--info); }
+.pill.red { background: var(--accent-soft); color: var(--accent); }
+
+/* diagrams */
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; margin: 12px 0 6px; }
+.diagram pre.mermaid { margin: 0; background: transparent; }
+.cap { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+
+/* flow steps (a real sequence, so numbered) */
+ol.flow { list-style: none; padding: 0; margin: 12px 0; counter-reset: s; display: grid; gap: 10px; }
+ol.flow li { counter-increment: s; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start; max-width: none; }
+ol.flow li::before { content: counter(s); font-family: var(--mono); font-size: 13px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* bug log */
+.bug { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.bug > div { background: var(--surface); padding: 12px 14px; font-size: 14px; }
+.bug .t { grid-column: 1 / -1; background: var(--sunken); font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.bug .k { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); display: block; margin-bottom: 2px; }
+@media (max-width: 640px) { .bug { grid-template-columns: minmax(0, 1fr); } }
+
+/* Q&A */
+.qa-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0; }
+.qa-tools input[type=search] { flex: 1 1 240px; min-width: 0; font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.toggle { font-size: 13px; display: inline-flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
+.count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qa { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.qa details { border-bottom: 1px solid var(--line); }
+.qa details:last-child { border-bottom: 0; }
+.qa summary { cursor: pointer; padding: 12px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; list-style: none; font-weight: 500; }
+.qa summary::-webkit-details-marker { display: none; }
+.qa summary:hover { background: var(--sunken); }
+.qa .cat { font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; padding-top: 3px; }
+.qa .a { padding: 0 16px 14px; color: var(--fg); }
+.qa .a p { margin: 0 0 8px; }
+.qa .a ul { margin: 0 0 8px; padding-left: 20px; }
+.qa .ref { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.qa .empty { padding: 20px; color: var(--muted); }
+
+.note { background: var(--accent-soft); border-radius: 8px; padding: 12px 16px; font-size: 14px; }
+.cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.panel h3 { margin-top: 0; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+</style>
+<style>
+/* Retroo additions: body background for standalone use; code blocks wrap on phones. */
+html, body { margin: 0; background: var(--bg); }
+.code { white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="toc" aria-label="Contents">
+    <div class="brand"><span class="tvmark" aria-hidden="true"></span>Retroo TV</div>
+    <div class="links">
+      <a href="#overview">Overview</a>
+      <a href="#flow">How the app works</a>
+      <a href="#modules">Modules &amp; data</a>
+      <a href="#sync">Staying in sync</a>
+      <a href="#built">What we built</a>
+      <a href="#fixes">Problems we hit</a>
+      <a href="#qa">Interview Q&amp;A</a>
+      <a href="#deploy">Deploying</a>
+      <a href="#run">Run it</a>
+    </div>
+  </nav>
+
+  <main>
+    <!-- ============================================================ OVERVIEW -->
+    <section id="overview">
+      <div class="eyebrow">Build report · November 2026</div>
+      <h1>Retroo TV build report</h1>
+      <p class="lede">A retro CRT television in the browser that plays music videos by decade, lets listeners share
+        YouTube Music playlists as channels anyone can tune in to, and runs "jams": rooms where one host drives
+        playback and everyone's TV follows in sync.</p>
+
+      <div class="facts">
+        <div class="fact"><div class="n">123</div><div class="l">seeded songs across 7 decades, 2 Bollywood : 1 Hollywood</div></div>
+        <div class="fact hl"><div class="n">±2 s</div><div class="l">guest drift tolerance, measured on the server's clock</div></div>
+        <div class="fact"><div class="n">76 + 24</div><div class="l">backend and frontend tests, incl. real-WebSocket tests</div></div>
+        <div class="fact"><div class="n">0</div><div class="l">accounts needed: identity is a display name, power is a token</div></div>
+        <div class="fact"><div class="n">8</div><div class="l">scenes, each a room, a TV model and a palette</div></div>
+      </div>
+
+      <h3>The pitch, in about a minute</h3>
+      <p>Retroo TV is a time machine for music. You pick a decade and an old television tunes in: static, a rolling
+        band, then a music video from that era, alternating two Bollywood songs with one Hollywood song. Listeners can
+        share a YouTube Music playlist and it becomes a channel on everyone's wall. And you can start a jam: a room
+        with a code where the host's TV drives everyone else's, with chat, an hour-long timer and open or private
+        entry. The backend is Spring Boot with STOMP over WebSocket; the frontend is Angular with signals and no
+        zone.js; the database is Oracle (H2 locally). The interesting engineering is keeping strangers' TVs in sync
+        without accounts, and making a private room genuinely private.</p>
+
+      <div class="stack" aria-label="Tech stack">
+        <span class="tag">Java 17</span><span class="tag">Spring Boot 3</span><span class="tag">STOMP over WebSocket</span>
+        <span class="tag">JPA / Hibernate 6</span><span class="tag">Oracle Free 23</span><span class="tag">H2 (dev)</span>
+        <span class="tag">Flyway</span><span class="tag">Angular 20 (zoneless, signals)</span><span class="tag">RxStomp</span>
+        <span class="tag">YouTube IFrame API</span><span class="tag">Web Audio</span><span class="tag">Docker Compose</span>
+        <span class="tag">nginx</span><span class="tag">Caddy</span><span class="tag">GitHub Actions</span>
+      </div>
+
+      <h3>Who does what</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Person</th><th>Has</th><th>Can do</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill info">Listener</span></td><td>Nothing</td><td>Tune decades, play shared playlists (with shuffle), share a playlist, start or join jams</td></tr>
+          <tr><td><span class="pill red">Jam host</span></td><td>256-bit <code>hostToken</code>, returned once</td><td>Drive everyone's playback, extend once, end, switch open/private, let people in, rotate the invite link</td></tr>
+          <tr><td><span class="pill ok">Jam guest</span></td><td>A display name (+ a pass in private jams)</td><td>Follow the host, mute locally, chat, suggest playlists</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ============================================================ FLOW -->
+    <section id="flow">
+      <div class="eyebrow">Flows</div>
+      <h2>How the app works</h2>
+
+      <h3>Request path through the system</h3>
+      <div class="diagram"><pre class="mermaid">
+flowchart LR
+  B["Browser<br/>Angular + YouTube iframe"] -- "HTTPS" --> C["Caddy<br/>TLS, real client IP"]
+  C --> N["nginx<br/>static app, /api, /ws"]
+  N -- "REST /api" --> A["Spring Boot API"]
+  N -- "STOMP /ws" --> A
+  A -- "JPA / Flyway" --> D[("Oracle Free<br/>songs, playlists")]
+  A -. "in memory" .-> J["Jams, presence,<br/>join requests"]
+  B -. "video" .-> Y["YouTube"]
+      </pre></div>
+      <p class="cap">One origin: nginx serves the app and proxies <code>/api</code> and <code>/ws</code>, so there's no CORS in production. Videos stream straight from YouTube to the browser.</p>
+
+      <h3>1. Tuning in to a decade</h3>
+      <ol class="flow">
+        <li><div><strong>First tap.</strong> Browsers block sound until the user interacts, so the TV cues a song but waits for "Tune in", which calls <code>play()</code> synchronously inside the click.</div></li>
+        <li><div><strong>Pick a song.</strong> <code>GET /api/songs/random?decade=90s&amp;lang=hi&amp;exclude=…</code>. The client rotates <code>hi, hi, en</code> and sends the last 10 video ids so nothing repeats soon.</div></li>
+        <li><div><strong>Channel change.</strong> Static noise (canvas, 30 fps) and a short hiss (Web Audio) for at least 0.7 s, then <code>loadVideoById</code>. The snow stays until YouTube reports <code>playing</code>, which hides its loading screen.</div></li>
+        <li><div><strong>Song ends.</strong> A longer "signal loss" (2.2 s) and the next song. Unplayable videos are skipped, at most 5 in a row.</div></li>
+        <li><div><strong>During the song.</strong> 2–3 short interference bursts at random song positions, so pausing or seeking never mistimes them.</div></li>
+      </ol>
+
+      <h3>2. Sharing a playlist</h3>
+      <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  participant U as Sharer
+  participant A as API
+  participant DB as Oracle
+  participant O as Everyone else
+  U->>A: POST /api/playlists {name, link, note}
+  A->>A: rate limit (3 / 10 min / IP), parse list= id, normalise text
+  A->>DB: insert (unique per playlist + name)
+  A-->>U: 201 PlaylistResponse
+  A--)O: after commit: /topic/playlists
+  Note over O: appears in the spotlight next, with a highlight
+      </pre></div>
+      <p class="cap">The broadcast waits for the database commit (<code>@TransactionalEventListener(AFTER_COMMIT)</code>), so nobody sees a playlist that then fails to save.</p>
+
+      <h3>3. Playing a shared playlist</h3>
+      <ol class="flow">
+        <li><div>The IFrame API has no "list playlist" call, so the player <code>cuePlaylist</code>s it and polls <code>getPlaylist()</code> for the video ids (8 s timeout → "private or empty").</div></li>
+        <li><div>A play order is built: playlist order, or a Fisher–Yates shuffle where every song plays once per pass and a new pass never starts with the song that just ended.</div></li>
+        <li><div>Titles arrive late (from <code>getVideoData()</code> once playing), so a jam host re-sends LOAD when the real title appears.</div></li>
+      </ol>
+
+      <h3>4. A jam: the host drives, guests follow</h3>
+      <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  participant H as Host
+  participant A as API (in memory)
+  participant G as Guest
+  H->>A: POST /api/jams → code + hostToken (once)
+  G->>A: GET /api/jams/{code} (snapshot)
+  G->>A: SUBSCRIBE /topic/jam/{code}, SEND join {name}
+  A--)H: MEMBERS, CHAT "Riya joined"
+  H->>A: SEND control {hostToken, LOAD, song, position}
+  A->>A: stamp updatedAt with the server clock
+  A--)G: STATE {song, playing, positionSec, updatedAt}
+  G->>G: offset = serverTime − now, seek if drift &gt; 2 s
+  loop every 15 s
+    H->>A: PLAY heartbeat (late joiners, drift)
+  end
+      </pre></div>
+
+      <h3>5. A private jam: ask to join</h3>
+      <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  participant V as Visitor (code only)
+  participant A as API
+  participant H as Host
+  V->>A: GET /api/jams/{code}
+  A-->>V: locked snapshot (no chat, members, playback)
+  V->>A: SUBSCRIBE /user/queue/jam-access, SEND request {name}
+  A--)H: REQUESTS [{id, name}]
+  H->>A: SEND admit {hostToken, requestId, allow: true}
+  A--)V: APPROVED {pass, full snapshot}
+  V->>A: SUBSCRIBE /topic/jam/{code} with jam-key: pass, SEND join {key}
+  Note over V,A: With the invite link (/jam/CODE#k=secret) the visitor skips straight to the last step
+      </pre></div>
+      <p class="cap">The secret lives in the URL fragment, which browsers never send to a server. Rotating it kills old links; people already in keep their personal pass.</p>
+    </section>
+
+    <!-- ============================================================ MODULES -->
+    <section id="modules">
+      <div class="eyebrow">Structure</div>
+      <h2>Modules and data</h2>
+      <div class="cols2">
+        <div class="panel">
+          <h3>Backend packages</h3>
+          <ul>
+            <li><code>web</code>: REST controllers, DTOs, RFC 7807 errors, admin key filter</li>
+            <li><code>service</code>: songs (random pick strategies), playlists, presence, rate limiter, YouTube link parsing and oEmbed</li>
+            <li><code>jam</code>: in-memory sessions, STOMP controller, membership listener</li>
+            <li><code>config</code>: WebSocket/STOMP (with the inbound guard), CORS, OpenAPI, properties</li>
+            <li><code>domain</code> / <code>repository</code>: JPA entities and Spring Data</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Frontend stores (signals)</h3>
+          <ul>
+            <li><code>PlayerStore</code>: the TV's state machine, decades, playlists, shuffle, jam follow mode</li>
+            <li><code>YouTubePlayerService</code>: the only code that touches <code>window.YT</code></li>
+            <li><code>JamStore</code>: lobby, join/ask, host mirroring, chat, private-jam keys</li>
+            <li><code>FeedStore</code>, <code>RealtimeService</code> (one STOMP connection), <code>ThemeService</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>Tables</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Table</th><th>Key columns</th><th>Rules</th></tr></thead>
+        <tbody>
+          <tr><td><code>SONGS</code></td><td>video_id, title, artist, decade, lang, release_year</td><td>Unique video id; decade checked by a constraint; indexed by decade</td></tr>
+          <tr><td><code>SHARED_PLAYLISTS</code></td><td>display_name, playlist_id, playlist_url, playlist_name, note</td><td>Unique (playlist, name); newest-first index for the feed</td></tr>
+        </tbody>
+      </table></div>
+      <p>Jams are deliberately <em>not</em> in the database: they last at most two hours and nothing about them is worth keeping, so a <code>ConcurrentHashMap</code> is the whole store and a sweeper ends expired ones every 15 s.</p>
+    </section>
+
+    <!-- ============================================================ SYNC -->
+    <section id="sync">
+      <div class="eyebrow">Deep dive</div>
+      <h2>Staying in sync without accounts</h2>
+      <div class="cols2">
+        <div class="panel"><h3>The server is the clock</h3><p>Every STATE carries <code>updatedAt</code> and every event carries <code>serverTime</code>. Guests compute <code>offset = serverTime − Date.now()</code>, so a phone whose clock is minutes off still lands within a second.</p></div>
+        <div class="panel"><h3>Correct only real drift</h3><p>Expected position = <code>positionSec + (now + offset − updatedAt) / 1000</code>. Guests seek only beyond 2 s; smaller corrections would stutter.</p></div>
+        <div class="panel"><h3>Ordering</h3><p><code>setPreserveReceiveOrder</code> and <code>setPreservePublishOrder</code> keep each connection's frames in order, so SUBSCRIBE-then-join and STATE-then-CHAT arrive as sent.</p></div>
+        <div class="panel"><h3>Per-jam locking</h3><p>Each <code>JamSession</code> synchronises its own state; two jams never contend. Broadcasting always happens after the lock is released.</p></div>
+      </div>
+      <h3>Trust without logins</h3>
+      <ul>
+        <li>The host token is compared in constant time and never appears in a snapshot or event.</li>
+        <li>Chat authors come from the server's member registry, never from the message.</li>
+        <li>Clients may only SEND to <code>/app/**</code>; a direct SEND to <code>/topic/…</code> is rejected, so nobody can forge STATE or ENDED.</li>
+        <li>Private jams drop SUBSCRIBE frames without a valid <code>jam-key</code> header, by returning <code>null</code> from the interceptor. Throwing would send an ERROR frame and close the whole socket.</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ BUILT -->
+    <section id="built">
+      <div class="eyebrow">History</div>
+      <h2>What we built, phase by phase</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Phase</th><th>What</th></tr></thead>
+        <tbody>
+          <tr><td><span class="num">v1</span></td><td>Decade TV, random songs, shared-playlist wall, live listener count, Flyway schema + seed</td></tr>
+          <tr><td><span class="num">v2</span></td><td>Bollywood/Hollywood 2:1 rotation, playable shared playlists, scenes and TV models, CRT effects</td></tr>
+          <tr><td><span class="num">v2.3</span></td><td>Jam sessions: host-driven sync, chat, 60-min lifetime, extend once</td></tr>
+          <tr><td><span class="num">v3</span></td><td><strong>This release:</strong> jam actions on playlists; rendering speed-ups; TV control fixes; mid-song interference; security fixes; Ivory Villa + Midnight rework; one-at-a-time playlist spotlight; shuffle (bar, TV lamp, S key); join by code; open and private jams; production HTTPS overlay</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Tests</h3>
+      <div class="cols2">
+        <div class="panel"><h3>Backend (76)</h3><p>Unit tests for the jam service on a hand-driven clock (expiry, extension, rate limits, private-jam access), API integration tests, and real-WebSocket tests: host/guest sync, and an outsider who hears nothing until let in.</p></div>
+        <div class="panel"><h3>Frontend (24)</h3><p>PlayerStore against a fake YouTube adapter (rotation, races, signal loss, follow mode, shuffle passes), the error interceptor, validators and the jam-code parser.</p></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ FIXES -->
+    <section id="fixes">
+      <div class="eyebrow">Self-annealing log</div>
+      <h2>Problems we hit and how they were fixed</h2>
+
+      <div class="bug"><div class="t"><span class="pill red">security</span>Anyone could broadcast fake jam events</div>
+        <div><span class="k">Cause</span>The simple broker accepted client SEND frames to <code>/topic/**</code>, skipping every check.</div>
+        <div><span class="k">Fix</span>An inbound channel interceptor allows SEND only to <code>/app/**</code>.</div></div>
+
+      <div class="bug"><div class="t"><span class="pill red">security</span>Rate limits could be dodged with one header</div>
+        <div><span class="k">Cause</span>nginx appended the visitor's own <code>X-Forwarded-For</code>, and Spring used its first value as "the client".</div>
+        <div><span class="k">Fix</span>Caddy replaces the header; nginx trusts it only from the private network and sends exactly one address.</div></div>
+
+      <div class="bug"><div class="t"><span class="pill warn">performance</span>The whole site felt sluggish</div>
+        <div><span class="k">Cause</span>A full-page film grain with <code>mix-blend-mode: overlay</code> sat above the video, forcing a re-blend every video frame; plus a never-ending scanline animation and 60 fps static.</div>
+        <div><span class="k">Fix</span>Plain translucent grain (¼ the area), static scanlines, 30 fps static with the filter baked into pixels, lobby polling only while visible.</div></div>
+
+      <div class="bug"><div class="t"><span class="pill warn">race</span>Two quick clicks on mute left the TV muted</div>
+        <div><span class="k">Cause</span><code>player.isMuted()</code> reports the iframe's state about 100 ms late, so both clicks read "unmuted".</div>
+        <div><span class="k">Fix</span>Our own signals are the source of truth for mute and play intent.</div></div>
+
+      <div class="bug"><div class="t"><span class="pill warn">UX</span>The seek bar jumped back while dragging</div>
+        <div><span class="k">Cause</span>The 500 ms progress tick rewrote the input's value under the user's finger.</div>
+        <div><span class="k">Fix</span>A dragging signal wins over the tick until <code>change</code> fires.</div></div>
+
+      <div class="bug"><div class="t"><span class="pill info">process</span>"Backend tests pass" was false</div>
+        <div><span class="k">Cause</span>Maven was piped through <code>tail</code>, so the exit code checked was tail's. CI caught a stale test.</div>
+        <div><span class="k">Fix</span>Always read Maven's own exit code and sum the surefire reports.</div></div>
+
+      <div class="bug"><div class="t"><span class="pill info">tooling</span>A regex silently lost <code>\b</code></div>
+        <div><span class="k">Cause</span>An edit script turned <code>\b</code> into a backspace character inside the jam-code parser.</div>
+        <div><span class="k">Fix</span>Rewrote it as <code>(?![A-Za-z0-9])</code>; unit tests now cover invite links.</div></div>
+
+      <div class="bug"><div class="t"><span class="pill info">robustness</span>Keyboard shortcuts crashed on some events</div>
+        <div><span class="k">Cause</span>Events targeting <code>document</code> have no <code>closest()</code>.</div>
+        <div><span class="k">Fix</span>Check <code>e.target instanceof Element</code> first.</div></div>
+    </section>
+
+    <!-- ============================================================ QA -->
+    <section id="qa">
+      <div class="eyebrow">Interview prep</div>
+      <h2>Questions you may be asked</h2>
+      <p>Click a question to see the answer. Leave answers closed to quiz yourself; search and filter by topic. The full written bank is <code>docs/INTERVIEW_QUESTIONS.md</code>.</p>
+      <div class="qa-tools">
+        <input type="search" id="qa-search" placeholder="Search questions and answers" aria-label="Search questions and answers">
+        <label class="toggle" for="qa-open"><input type="checkbox" id="qa-open"> Open all answers</label>
+      </div>
+      <div class="chips" id="qa-chips" role="group" aria-label="Filter by topic"></div>
+      <p class="count" id="qa-count" aria-live="polite"></p>
+      <div class="qa" id="qa-list"></div>
+    </section>
+
+    <!-- ============================================================ DEPLOY -->
+    <section id="deploy">
+      <div class="eyebrow">Going live</div>
+      <h2>Deploying</h2>
+      <p>One Linux VM (4 GB RAM or more) with Docker, a domain pointing at it, and the production overlay. Full guide: <code>docs/DEPLOYMENT.md</code>.</p>
+      <div class="code">cp .env.example .env   # passwords, DOMAIN, ACME_EMAIL
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build</div>
+      <div class="cols2">
+        <div class="panel"><h3>Why one VM</h3><p>Jams and presence live in memory, so exactly one API instance; WebSockets stay open for hours; Oracle needs ~2 GB. Sleeping free tiers and serverless end jams.</p></div>
+        <div class="panel"><h3>What's exposed</h3><p>Only Caddy (80/443, automatic HTTPS + HSTS). nginx, the API and Oracle are on Docker's private network; Swagger, H2 console and actuator aren't reachable.</p></div>
+      </div>
+      <p class="note">Updating restarts the API, which ends live jams (they're in memory). Songs and shared playlists are in Oracle and survive.</p>
+    </section>
+
+    <!-- ============================================================ RUN -->
+    <section id="run">
+      <div class="eyebrow">Hands-on</div>
+      <h2>Running the project</h2>
+      <h3>Local development</h3>
+      <div class="code">cd retroo-tv-api &amp;&amp; ./mvnw spring-boot:run      # API on :8080, H2 file database, Swagger at /swagger-ui.html
+cd retroo-tv &amp;&amp; npm install &amp;&amp; npm start         # app on :4200, proxies /api and /ws</div>
+      <h3>Full stack in Docker (Oracle)</h3>
+      <div class="code">cp .env.example .env &amp;&amp; docker compose up --build   # http://localhost</div>
+      <h3>Tests</h3>
+      <div class="code">cd retroo-tv-api &amp;&amp; ./mvnw test
+cd retroo-tv &amp;&amp; npm run test:ci</div>
+    </section>
+  </main>
+</div>
+
+<script>
+// Interview questions. cat = topic chip; ref = where to point in the code.
+const QA = [
+  // ---------------- architecture
+  { cat: "Architecture", q: "Give me the 60-second overview.",
+    a: "<p>A retro TV in the browser: pick a decade and it plays music videos from it, two Bollywood to one Hollywood. Listeners share YouTube Music playlists that become channels. Jams are rooms where a host drives everyone's TV. Spring Boot REST + STOMP over WebSocket, Angular with signals, Oracle with Flyway, Docker behind nginx and Caddy.</p>" },
+  { cat: "Architecture", q: "Why keep jams in memory instead of the database?", ref: "JamService, JamSession",
+    a: "<p>A jam lives at most two hours and nothing in it is worth keeping. A <code>ConcurrentHashMap</code> needs no schema, no cleanup jobs and no stale rows; a sweeper drops expired jams. The cost: a restart ends every jam, and you can run only one API instance. Scaling out means moving it to Redis with pub/sub.</p>" },
+  { cat: "Architecture", q: "Why one origin (nginx proxying /api and /ws)?",
+    a: "<p>The browser only ever talks to one host, so there's no CORS in production, cookies and CSP stay simple, and the WebSocket URL is derived from <code>location</code> (<code>ws</code> on http, <code>wss</code> on https).</p>" },
+  { cat: "Architecture", q: "Why STOMP on top of WebSocket and not raw WebSocket?", ref: "WebSocketConfig",
+    a: "<p>STOMP gives destinations (<code>/topic/jam/{code}</code>), subscribe/unsubscribe, heart-beats and per-session queues for free, and Spring maps <code>/app/**</code> to <code>@MessageMapping</code> methods. With raw WebSocket I'd invent all of that.</p>" },
+  { cat: "Architecture", q: "What would you change to run several API instances?",
+    a: "<ul><li>Jams, presence and join requests into Redis (hash per jam).</li><li>Simple broker → STOMP broker relay (RabbitMQ/ActiveMQ) so every node sees every event.</li><li>Sticky sessions for the WebSocket.</li><li>Per-IP rate limiter into Redis too.</li></ul>" },
+
+  // ---------------- realtime / jams
+  { cat: "Realtime", q: "How do guests stay in sync with the host?", ref: "PlayerStore.applyRemote",
+    a: "<p>The server stamps every STATE with <code>updatedAt</code> on its own clock and every event with <code>serverTime</code>. A guest computes <code>offset = serverTime − Date.now()</code> and the expected position <code>positionSec + (now + offset − updatedAt)/1000</code>, and seeks only if it's more than 2 s off. The host also sends a PLAY heartbeat every 15 s.</p>" },
+  { cat: "Realtime", q: "Why use the server's clock and not the host's?",
+    a: "<p>Device clocks can be minutes wrong. If the host stamped positions with its own clock, every guest would inherit that error. One reference clock, the server, makes all guests consistent with each other.</p>" },
+  { cat: "Realtime", q: "Why only correct drift above 2 seconds?",
+    a: "<p>Seeking makes YouTube re-buffer. Correcting every few hundred milliseconds would stutter constantly; 2 s is noticeable to people in the same room but rare enough not to annoy.</p>" },
+  { cat: "Realtime", q: "How is membership kept honest when people just close the tab?", ref: "JamMembershipListener",
+    a: "<p>Membership is tied to the STOMP session. <code>SessionDisconnectEvent</code> (tab closed, network lost, heart-beat timeout) removes the session from every jam, and UNSUBSCRIBE from the jam topic removes it from that jam. Heart-beats catch half-open TCP connections.</p>" },
+  { cat: "Realtime", q: "How do you send an error to just one connection without logins?", ref: "JamStompController.sendError",
+    a: "<p>There's no Principal, so I address the STOMP session id and put it in the message headers; Spring's user-destination resolver delivers to <code>/queue/jam-errors-user{sessionId}</code>, which is what <code>/user/queue/jam-errors</code> maps to on that connection only.</p>" },
+  { cat: "Realtime", q: "How is message order guaranteed?",
+    a: "<p><code>setPreserveReceiveOrder(true)</code> processes each connection's inbound frames in order, so SUBSCRIBE then join works. <code>setPreservePublishOrder(true)</code> keeps outbound order per session, so STATE then the CHAT that follows arrive in that order.</p>" },
+  { cat: "Realtime", q: "What's thread-safe in JamSession and why is it enough?",
+    a: "<p>Every method touching mutable state is <code>synchronized</code> on the session: one lock per jam, so jams never contend, and the critical sections are tiny with no I/O. Broadcasting always happens after the method returns, never while holding the lock.</p>" },
+
+  // ---------------- private jams
+  { cat: "Private jams", q: "How does a private jam work?", ref: "JamSession.mayEnter",
+    a: "<p>It's unlisted. Entry needs a key: the host token, the invite token (in the link as <code>#k=…</code>) or a personal pass the host issued by letting someone in. Without one you see a locked snapshot and can ask to join; the host gets Let in / Decline.</p>" },
+  { cat: "Private jams", q: "Why an invite link and host approval instead of a password?",
+    a: "<p>A password would be sent in the same message as the code, so it adds friction without security. A link with a 128-bit secret is one tap to use, and rotating it kills leaked links instantly while everyone already inside keeps their pass. Approval covers people who only have the code.</p>" },
+  { cat: "Private jams", q: "Why put the secret in the URL fragment?",
+    a: "<p>Browsers never send the fragment (<code>#k=…</code>) to the server, so it doesn't end up in access logs, proxies or Referer headers. The client clears it from the address bar after joining.</p>" },
+  { cat: "Private jams", q: "Hiding a jam in the lobby isn't privacy. What actually enforces it?", ref: "WebSocketConfig, JamService.maySubscribe",
+    a: "<ul><li>REST snapshot: locked view (no chat, members or playback) without a valid <code>X-Jam-Key</code>.</li><li>SUBSCRIBE to <code>/topic/jam/{code}</code>: dropped by the inbound interceptor without a valid <code>jam-key</code> header.</li><li><code>join</code>: FORBIDDEN without a key or approval.</li></ul><p>A real-socket test proves an outsider receives nothing while the host chats.</p>" },
+  { cat: "Private jams", q: "Why return null from the interceptor instead of throwing?",
+    a: "<p>Throwing makes Spring send a STOMP ERROR frame, and the client closes the whole connection, killing the listener count and the playlist feed too. Returning <code>null</code> just drops that one SUBSCRIBE.</p>" },
+  { cat: "Private jams", q: "What happens to people waiting when the host opens the jam?",
+    a: "<p>Everyone waiting is approved at once: each gets an APPROVED message with a pass and snapshot, and the jam appears in the lobby. Leaving or disconnecting while waiting withdraws the request, and the waiting list is capped at 20.</p>" },
+
+  // ---------------- security
+  { cat: "Security", q: "Tell me about the forged-event vulnerability you fixed.", ref: "WebSocketConfig.configureClientInboundChannel",
+    a: "<p>The simple broker relays any client SEND to <code>/topic/**</code>. A guest could send <code>{type: ENDED}</code> to a jam's topic and end it for everyone, or post a fake playlist to all users. An inbound interceptor now rejects SEND to anything outside <code>/app/**</code>, where controllers validate everything.</p>" },
+  { cat: "Security", q: "How could rate limits be bypassed, and how did you fix it?",
+    a: "<p>Spring trusts <code>X-Forwarded-For</code>, and nginx appended the visitor's own header, so the first value was attacker-chosen. Now Caddy overwrites the header with the real client IP, nginx accepts it only from private-network peers (<code>set_real_ip_from</code>) and sends exactly one address.</p>" },
+  { cat: "Security", q: "How is the host token protected?",
+    a: "<p>32 random bytes from <code>SecureRandom</code>, returned once at creation, kept in <code>sessionStorage</code>, compared with <code>MessageDigest.isEqual</code> (constant time), sent in a header for REST, and never included in any snapshot or event.</p>" },
+  { cat: "Security", q: "How do you stop a guest impersonating the host in chat?",
+    a: "<p>Chat authors come from the server's member registry, not the message. And a guest can't join under the host's name (case-insensitive) unless they hold the host token.</p>" },
+  { cat: "Security", q: "Why validate before spending a rate-limit token?",
+    a: "<p>Otherwise malformed requests eat the budget: three typos would lock someone out of creating jams for an hour. CI caught the old test that still assumed the previous order.</p>" },
+
+  // ---------------- frontend
+  { cat: "Frontend", q: "Why zoneless Angular with signals?", ref: "app.config.ts",
+    a: "<p>The UI is driven by signals, so Angular knows exactly what changed. Without zone.js, the YouTube iframe's constant postMessage traffic doesn't trigger app-wide change detection, and callbacks from outside Angular update the view without <code>NgZone.run</code>.</p>" },
+  { cat: "Frontend", q: "Why wrap YouTube in an adapter service?", ref: "YouTubePlayerService",
+    a: "<p>It's the only code that knows <code>window.YT</code> exists. It turns callbacks into signals and observables, hides lifecycle quirks (load once, wait for onReady), and is swapped for a fake in tests.</p>" },
+  { cat: "Frontend", q: "How do you stop rapid channel clicks from racing?", ref: "PlayerStore.tuneTo",
+    a: "<p>Each channel change increments a sequence number; when the async work finishes it checks it's still the latest before touching the player, like RxJS <code>switchMap</code>. A test fires two decades with different latencies and asserts only the last one loads.</p>" },
+  { cat: "Frontend", q: "Why did double-clicking mute leave the TV muted?",
+    a: "<p>The iframe applies commands asynchronously, so <code>isMuted()</code> lagged a click behind and both clicks read 'unmuted'. Our own signal is now the source of truth; play/pause tracks the requested state the same way.</p>" },
+  { cat: "Frontend", q: "How does the playlist spotlight rotate without a JS timer?", ref: "PlaylistFeedComponent",
+    a: "<p>The card runs an 11-second CSS animation; <code>animationend</code> advances to the next playlist. Hover or focus pauses it with <code>animation-play-state</code>, and a hidden tab pauses it for free. New shares jump the queue; reduced motion turns rotation off.</p>" },
+  { cat: "Frontend", q: "How does shuffle avoid repeats?", ref: "PlayerStore.playlistStep",
+    a: "<p>A Fisher–Yates permutation per pass: every song once, then a fresh shuffle that never opens with the song just played. Turning shuffle on keeps the current song first; off continues in playlist order from it.</p>" },
+
+  // ---------------- performance
+  { cat: "Performance", q: "The site felt slow. What did you find?",
+    a: "<p>A full-screen film grain using <code>mix-blend-mode: overlay</code> over the playing video, which forces the browser to re-blend the whole page every video frame; an endless scanline animation on another blended layer; and TV static redrawn at 60 fps with a CSS filter on top.</p>" },
+  { cat: "Performance", q: "Which CSS properties are cheap to animate and why?",
+    a: "<p><code>transform</code> and <code>opacity</code>: the compositor can animate them on the GPU without layout or repaint. Blend modes and filters over changing content (like video) force repaints every frame.</p>" },
+  { cat: "Performance", q: "How is the TV static drawn efficiently?", ref: "StaticNoiseDirective",
+    a: "<p>A small 320×240 canvas scaled up, a preallocated <code>Uint32Array</code> view writing one RGBA value per pixel, 30 fps, the old filter baked into the grey range, and the loop runs only while static is visible.</p>" },
+  { cat: "Performance", q: "How are the mid-song flicker bursts timed?",
+    a: "<p>They're planned per song as song positions (2–3, never in the first or last 15 s) and fired when playback passes them, so pausing, seeking or a jam re-sync can't mistime them. Only transform and opacity animate.</p>" },
+
+  // ---------------- testing
+  { cat: "Testing", q: "How do you test time-based jam rules quickly?", ref: "JamServiceTest.TestClock",
+    a: "<p>The service takes a <code>Clock</code>; tests inject a mutable one and jump through a 60-minute life in microseconds: expiry, the 5-minute warning, extension and rate-limit windows.</p>" },
+  { cat: "Testing", q: "What do the WebSocket tests prove?", ref: "JamWebSocketTest",
+    a: "<p>Real STOMP clients against a random-port server: a guest's control command gets a private FORBIDDEN while the host's is broadcast, member counts track disconnects, and in a private jam an outsider receives nothing until the host lets them in.</p>" },
+  { cat: "Testing", q: "Tell me about a time a test result lied.",
+    a: "<p>I piped Maven through <code>tail</code>, so the exit code I checked was tail's and I reported a pass. CI failed on a stale rate-limit test. Now I always read the tool's own exit code and sum the surefire reports.</p>" },
+
+  // ---------------- devops
+  { cat: "DevOps", q: "How is it deployed?",
+    a: "<p>Docker Compose on one VM: Caddy (HTTPS, automatic certificates) → nginx (static app, proxies <code>/api</code> and <code>/ws</code>) → Spring Boot → Oracle Free. Only Caddy is exposed. A production overlay file adds Caddy and un-publishes nginx.</p>" },
+  { cat: "DevOps", q: "Why can't this run on a free tier that sleeps, or serverless?",
+    a: "<p>Jams live in memory and need long-lived WebSockets; sleeping ends both, and multiple instances would split the jams. One always-on VM with 4 GB+ RAM (Oracle needs ~2 GB) is the right shape.</p>" },
+  { cat: "DevOps", q: "What does CI check?",
+    a: "<p>Backend tests, the Angular production build and tests, both Docker images, <code>nginx -t</code> inside the built image (nginx only reads its config at start-up), and that the compose files merge.</p>" },
+  { cat: "DevOps", q: "How does the API image stay small and fast to rebuild?",
+    a: "<p>Multi-stage: Maven builds the jar, Spring Boot's layer tools split dependencies from application classes, and a JRE Alpine runtime runs as a non-root user with a readiness health check. Code changes rebuild only the small application layer.</p>" },
+
+  // ---------------- product
+  { cat: "Product", q: "Why not accounts?",
+    a: "<p>The core loop (tune in, share, jam) should take seconds. Identity is a display name; power is a token you hold (host) or were given (pass, invite link). That covers the trust model without a login screen.</p>" },
+  { cat: "Product", q: "Why show one playlist at a time instead of a scrolling list?",
+    a: "<p>A moving list is hard to read and click. One card at a time is calmer, sits still while you're on it, and the ‹ › arrows let you browse. There's no visible count because new shares would keep it ticking up under the reader.</p>" }
+];
+
+const list = document.getElementById("qa-list");
+const chipsEl = document.getElementById("qa-chips");
+const search = document.getElementById("qa-search");
+const openAll = document.getElementById("qa-open");
+const countEl = document.getElementById("qa-count");
+const cats = ["All", ...new Set(QA.map(x => x.cat))];
+let active = "All";
+
+function esc(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+function plain(html) { const d = document.createElement("div"); d.innerHTML = html; return d.textContent.toLowerCase(); }
+QA.forEach(x => { x.text = (x.q + " " + plain(x.a) + " " + (x.ref || "")).toLowerCase(); });
+
+cats.forEach(c => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.textContent = c;
+  b.setAttribute("aria-pressed", String(c === active));
+  b.addEventListener("click", () => {
+    active = c;
+    chipsEl.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", String(x.textContent === c)));
+    render();
+  });
+  chipsEl.appendChild(b);
+});
+
+function render() {
+  const term = search.value.trim().toLowerCase();
+  const rows = QA.filter(x => (active === "All" || x.cat === active) && (!term || x.text.includes(term)));
+  list.innerHTML = rows.length ? rows.map(x => `
+    <details${openAll.checked ? " open" : ""}>
+      <summary><span>${esc(x.q)}</span><span class="cat">${esc(x.cat)}</span></summary>
+      <div class="a">${x.a}${x.ref ? `<div class="ref">Code: ${esc(x.ref)}</div>` : ""}</div>
+    </details>`).join("") : `<div class="empty">No questions match "${esc(term)}".</div>`;
+  countEl.textContent = `${rows.length} of ${QA.length} questions`;
+}
+search.addEventListener("input", render);
+openAll.addEventListener("change", render);
+render();
+
+</script>
+<script type="module">
+// Flow diagrams. Pinned version; dark theme when the reader's system is dark.
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "neutral", securityLevel: "strict" });
+await mermaid.run({ querySelector: "pre.mermaid" });
+</script>
+</body>
+</html>

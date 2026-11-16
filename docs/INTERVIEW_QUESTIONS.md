@@ -786,6 +786,79 @@ limewash, and a page-wide film grain at a few percent opacity.
 A `linkedSignal` keeps `[previous, current]` artwork URLs; `@for … track url` keeps the previous layer mounted while
 the new one fades in on top, then the oldest drops out.
 
+## 15e. Release v3: speed, controls, private jams, deployment
+
+**199. Users said the site felt slow. How did you find the cause?**
+Looked for work that repeats every frame. A full-page film grain used `mix-blend-mode: overlay` *above the playing
+video*, so the browser re-blended the whole page on every video frame; a scanline "hum" animated forever on another
+blended layer; TV static was redrawn at 60 fps with a CSS filter on top; the jam lobby polled even with the drawer
+closed. Fixes: plain translucent grain (¼ the area), static scanlines, 30 fps static with the filter baked into the
+pixels, polling only while the lobby is visible, shorter forced static on channel change (1.5 s → 0.7 s).
+
+**200. Two quick clicks on mute left the TV muted. Why?**
+The YouTube iframe applies commands asynchronously, so `isMuted()` still said "unmuted" on the second click and both
+clicks muted. Our own `muted` signal is now the source of truth; play/pause tracks the requested state the same way
+(`wantsPlaying()`), so a double-click returns to where it started.
+
+**201. Tell me about the forged-event vulnerability.**
+Spring's simple broker relays any client `SEND` to `/topic/**`. A guest could send `{"type":"ENDED"}` straight to a
+jam's topic and end it for everyone, or push a fake entry to everyone's playlist feed. Fix: an inbound channel
+interceptor rejects `SEND` outside `/app/**`, where controllers validate tokens, membership and input.
+
+**202. How could rate limits be bypassed, and what fixed it?**
+Spring uses `X-Forwarded-For` for the client IP, and nginx *appended* the visitor's own header, so the first value was
+attacker-chosen. Now Caddy replaces the header with the real address, nginx accepts it only from private-network peers
+(`set_real_ip_from` + `real_ip_header`) and sends exactly one address (`X-Forwarded-For $remote_addr`).
+
+**203. How do private jams work, and why not a password?**
+Unlisted; entry needs a key: the host token, the invite token (link `/jam/CODE#k=…`) or a personal pass issued when
+the host lets someone in. Code-only visitors "ask to join" and the host gets Let in / Decline. A password would travel
+in the same message as the code (no extra security, more friction); a 128-bit link secret is one tap, and rotating it
+kills leaked links while people already inside keep their pass.
+
+**204. Hiding a jam from the lobby isn't privacy. What enforces it?**
+Three server checks: the REST snapshot is *locked* (no chat, members, playback) without a valid `X-Jam-Key`; STOMP
+`SUBSCRIBE` to `/topic/jam/{code}` is dropped without a valid `jam-key` header; `join` is refused with `FORBIDDEN`.
+A real-WebSocket test proves an outsider receives nothing while the host chats, then everything once let in.
+
+**205. Why drop the SUBSCRIBE by returning `null` instead of throwing?**
+Throwing makes Spring send a STOMP `ERROR` frame and the client closes the *whole* connection (listener count, feed,
+everything). Returning `null` from `preSend` silently drops just that one frame.
+
+**206. Why put the invite secret in the URL fragment?**
+Browsers never send the fragment to a server, so it stays out of access logs, proxies and `Referer` headers. The app
+clears it from the address bar once you're in.
+
+**207. How is shuffle implemented without repeats?**
+A play order per playlist: identity, or a Fisher–Yates permutation. Every song plays once per pass; the next pass is a
+fresh shuffle that never opens with the song that just ended. Toggling on keeps the current song first; off continues
+in playlist order from it. Unit tests cover one-song-per-pass and toggling mid-playlist.
+
+**208. How are the mid-song interference bursts timed?**
+Planned per song as *song positions* (2–3, outside the first and last 15 s, spread across equal slots) and fired when
+playback passes them, so pausing, seeking or a jam re-sync never fires one at the wrong moment. Only `transform` and
+`opacity` animate, so it costs nothing over the video.
+
+**209. How does the playlist spotlight rotate without a JavaScript timer?**
+The card runs an 11 s CSS animation and `animationend` advances to the next playlist. Hover, keyboard focus or a tap
+pauses it via `animation-play-state` (so it never fades out from under a click), and a hidden tab pauses it for free.
+There's no visible "3 / 17" count because new shares would keep it ticking up under the reader.
+
+**210. How would you deploy this, and what constrains the choice?**
+One Linux VM (4 GB+ RAM; Oracle Free needs ~2 GB) with Docker Compose: Caddy (automatic HTTPS) → nginx → Spring Boot →
+Oracle, only Caddy exposed. Constraints: jams/presence live in memory → exactly one API instance; WebSockets stay
+open for hours → no sleeping free tiers or serverless. Restarting the API ends live jams; songs and playlists survive.
+See `docs/DEPLOYMENT.md`.
+
+**211. What does CI catch beyond tests?**
+It builds both Docker images, runs `nginx -t` inside the built web image (nginx only reads its config at start-up, so
+a typo would otherwise surface on the server), and checks that the compose files merge.
+
+**212. Tell me about a time a passing result was wrong.**
+I piped Maven through `tail`, so the exit code I read was tail's and I reported green. CI then failed on a test that
+still assumed invalid chat messages consumed a rate-limit token. Lesson: always read the tool's own exit code (and
+sum the surefire reports); the fix was updating the test to the new validate-before-limit rule.
+
 ## 16. Quick-fire
 
 156. Default port? **8080** (overridable via `PORT`). 157. Where's the OpenAPI spec? **`/v3/api-docs`**.

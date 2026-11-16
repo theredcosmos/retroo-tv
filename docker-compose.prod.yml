@@ -1,0 +1,32 @@
+# Production overlay: HTTPS on your own domain via Caddy (automatic Let's Encrypt certificates).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Needs DOMAIN (and ACME_EMAIL) in .env, the domain's DNS A record pointing at this server, and ports 80 + 443
+# open. Caddy is the only thing exposed to the internet; nginx, the API and Oracle stay on the private network.
+# See docs/DEPLOYMENT.md.
+
+services:
+  frontend:
+    ports: !reset []        # no longer published directly — Caddy in front (Compose ≥ 2.24)
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env, e.g. retroo.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"       # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data    # certificates — keep this volume, or you'll hit Let's Encrypt rate limits
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:
