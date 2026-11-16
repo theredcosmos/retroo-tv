@@ -231,6 +231,8 @@ Also keep the `caddy_data` volume: losing it means re-issuing certificates, and 
 
 - [x] Only ports 80/443 (Caddy) are public; Oracle's port isn't published.
 - [x] HTTPS everywhere, with HSTS.
+- [x] Content-Security-Policy, nosniff, Referrer-Policy and Permissions-Policy on every response
+      (`retroo-tv/security-headers.conf`; CI checks they're present). Inline scripts are blocked.
 - [x] Rate limits use the visitor's real IP. Caddy replaces any `X-Forwarded-For` a visitor sends; nginx only
       accepts that header from the private network and passes the API exactly one address.
 - [x] Clients can only STOMP-send to `/app/**`; private jams are enforced by the server.
